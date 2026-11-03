@@ -1,9 +1,12 @@
-import { describe, errorMessage, getProfiles, SYSTEM_PROMPT } from './api.js';
+import { describe, errorMessage, getProfiles, SYSTEM_PROMPT, ACCESSORIES_PROMPT } from './api.js';
+import { createCropEditor } from './crop.js';
 
 const KEY = 'pinClothes';
 const context = () => SillyTavern.getContext();
 let dialog;
 let image = '';
+let fullImage = '';
+let cropRect;
 let originalFile;
 let imageVersion = 0;
 let loadingImage = false;
@@ -46,6 +49,9 @@ function icon(name) {
         download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
         trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
         copy: 'M9 9h12v12H9zM15 5V3H3v12h2',
+        crop: 'M6 3v15h15M3 6h15v15',
+        shirt: 'm8 3-5 3-2 5 5 2v8h12v-8l5-2-2-5-5-3c0 4-8 4-8 0Z',
+        glasses: 'M3 13 5 6h3M21 13l-2-7h-3M9 14c2-2 4-2 6 0M9 15a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM23 15a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
         spark: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z',
     };
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -75,6 +81,8 @@ function showView(view) {
         tab.tabIndex = name === view || (view === 'settings' && name === 'outfit') ? 0 : -1;
     }
     ui.settingsButton.setAttribute('aria-expanded', String(view === 'settings'));
+    ui.settingsButton.disabled = view === 'crop';
+    ui.tabBar.hidden = view === 'crop';
     ui.body.scrollTop = 0;
     syncButtons();
 }
@@ -100,10 +108,12 @@ function syncButtons() {
     ui.profile.disabled = busy;
     ui.refresh.disabled = busy;
     ui.comment.disabled = busy;
+    for (const option of ui.scopeOptions) option.disabled = busy;
     ui.tokens.disabled = busy;
     ui.file.disabled = busy;
     ui.drop.disabled = busy || loadingImage;
     ui.clear.disabled = busy || loadingImage || !image;
+    ui.crop.disabled = busy || loadingImage || !image;
     ui.download.disabled = !originalFile;
     ui.copy.disabled = !ui.result.value.trim();
     ui.insert.disabled = !ui.result.value.trim();
@@ -111,6 +121,7 @@ function syncButtons() {
     ui.drop.classList.toggle('pc-has-image', Boolean(image));
     ui.resultEmpty.hidden = Boolean(ui.result.value.trim());
     ui.outputActions.hidden = busy || ui.view !== 'result';
+    ui.cropEditor.actions.hidden = ui.view !== 'crop';
     ui.generateActions.hidden = !busy && ui.view !== 'outfit';
     ui.generate.hidden = busy;
     ui.generate.textContent = loadingImage ? 'Подготовка фото…' : 'Описать одежду';
@@ -160,7 +171,7 @@ async function prepareImage(file) {
 }
 
 async function loadImage(file) {
-    if (!file || activeRequest) return;
+    if (!file || activeRequest || ui.view === 'crop') return;
     const version = ++imageVersion;
     loadingImage = true;
     status('Подготавливаю изображение…');
@@ -169,6 +180,8 @@ async function loadImage(file) {
         const prepared = await prepareImage(file);
         if (version !== imageVersion) return;
         image = prepared;
+        fullImage = prepared;
+        cropRect = undefined;
         originalFile = file;
         ui.preview.src = image;
         ui.preview.hidden = false;
@@ -176,6 +189,7 @@ async function loadImage(file) {
         ui.filename.textContent = file.name || 'Изображение из буфера';
         ui.result.value = '';
         status('Фото готово к описанию.');
+        if (dialog.open) openCrop();
     } catch (error) {
         if (version === imageVersion) status(errorMessage(error), true);
     } finally {
@@ -191,6 +205,8 @@ function clearImage() {
     imageVersion++;
     loadingImage = false;
     image = '';
+    fullImage = '';
+    cropRect = undefined;
     originalFile = undefined;
     ui.preview.removeAttribute('src');
     ui.preview.hidden = true;
@@ -202,6 +218,20 @@ function clearImage() {
     syncButtons();
 }
 
+function openCrop() {
+    if (!fullImage || activeRequest) return;
+    showView('crop');
+    ui.cropEditor.open(fullImage, cropRect);
+    ui.cropEditor.actions.querySelector('button').focus({ preventScroll: true });
+    status('Оставь в рамке нужную часть фото или нажми «Отмена».');
+}
+
+function cancelCrop() {
+    showView('outfit');
+    ui.crop.focus({ preventScroll: true });
+    status('Фото оставлено без изменений.');
+}
+
 function openPinterest() {
     const query = ui.search.value.trim();
     const url = query ? `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(query)}` : 'https://www.pinterest.com/';
@@ -211,7 +241,7 @@ function openPinterest() {
 }
 
 async function generate() {
-    if (activeRequest || loadingImage || !image) return;
+    if (activeRequest || loadingImage || !image || ui.view === 'crop') return;
     const controller = new AbortController();
     activeRequest = controller;
     const timeout = setTimeout(() => controller.abort(new DOMException('Время ожидания истекло (120 секунд). Попробуй ещё раз.', 'TimeoutError')), 120000);
@@ -224,6 +254,7 @@ async function generate() {
             profileId: ui.profile.value,
             image,
             comment: ui.comment.value,
+            includeAccessories: settings().includeAccessories === true,
             maxTokens: Number(ui.tokens.value),
             signal: controller.signal,
         });
@@ -300,6 +331,7 @@ function createDialog() {
     headerActions.append(ui.settingsButton, close);
     header.append(brand, headerActions);
     const tabs = node('div', 'pc-tabs');
+    ui.tabBar = tabs;
     tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', 'Pinterest');
     for (const [name, label] of [['outfit', 'Образ'], ['result', 'Результат']]) {
@@ -365,9 +397,10 @@ function createDialog() {
     ui.file.addEventListener('change', () => void loadImage(ui.file.files[0]));
     ui.filename = node('div', 'pc-hint pc-filename');
     ui.clear = iconButton('Убрать', 'trash', clearImage);
+    ui.crop = iconButton('Обрезать фото', 'crop', openCrop);
     ui.download = iconButton('Скачать оригинал', 'download', downloadImage);
     ui.imageActions = node('div', 'pc-image-actions');
-    ui.imageActions.append(ui.filename, ui.download, ui.clear);
+    ui.imageActions.append(ui.filename, ui.crop, ui.download, ui.clear);
     upload.append(drop, ui.file, ui.imageActions);
 
     ui.profile = node('select', 'pc-input');
@@ -379,13 +412,38 @@ function createDialog() {
     ui.refresh = iconButton('Обновить профили', 'refresh', refreshProfiles);
     const profileRow = node('div', 'pc-profile-row');
     profileRow.append(field('Профиль подключения', ui.profile), ui.refresh);
+    const scope = node('div', 'pc-scope');
+    scope.setAttribute('role', 'group');
+    scope.setAttribute('aria-label', 'Что описывать');
+    ui.scopeOptions = [];
+    ui.rule = node('p', 'pc-hint pc-rule');
+    ui.prompt = node('pre', 'pc-prompt');
+    const updateScope = () => {
+        const enabled = settings().includeAccessories === true;
+        ui.scopeOptions.forEach((option, index) => option.setAttribute('aria-pressed', String(enabled === Boolean(index))));
+        ui.rule.textContent = enabled
+            ? 'Одежда, обувь, сумки и украшения. Только то, что видно на фото.'
+            : 'Без обуви и аксессуаров. Исключения можно добавить в пожелании.';
+        ui.prompt.textContent = enabled ? ACCESSORIES_PROMPT : SYSTEM_PROMPT;
+    };
+    for (const [enabled, label, symbol] of [[false, 'Только одежда', 'shirt'], [true, 'С аксессуарами', 'glasses']]) {
+        const option = button('', () => {
+            settings().includeAccessories = enabled;
+            saveSettings();
+            updateScope();
+        });
+        option.append(icon(symbol), node('span', '', label));
+        ui.scopeOptions.push(option);
+        scope.append(option);
+    }
+    updateScope();
     ui.comment = node('textarea', 'pc-input');
     ui.comment.rows = 2;
     ui.comment.maxLength = 4000;
     ui.comment.placeholder = 'Например: добавь очки, только девушка слева…';
     const comment = node('details', 'pc-comment');
     comment.append(node('summary', '', 'Добавить пожелание'), field('Дополнительный комментарий', ui.comment));
-    outfit.append(pinterest, upload, profileRow, comment, node('p', 'pc-hint pc-rule', 'Только одежда. Обувь и аксессуары — по твоей просьбе.'));
+    outfit.append(pinterest, upload, profileRow, scope, ui.rule, comment);
 
     const preferences = ui.panels.settings;
     preferences.append(node('h3', '', 'Настройки'), sendbarToggle());
@@ -406,7 +464,7 @@ function createDialog() {
         settings().maxTokens = Number(ui.tokens.value);
         saveSettings();
     });
-    advanced.append(field('Лимит токенов (включая рассуждения модели)', ui.tokens), node('pre', 'pc-prompt', SYSTEM_PROMPT));
+    advanced.append(field('Лимит токенов (включая рассуждения модели)', ui.tokens), ui.prompt);
     preferences.append(help, advanced);
     ui.generate = button('Описать одежду', generate);
     ui.generate.classList.add('pc-primary');
@@ -431,8 +489,22 @@ function createDialog() {
     ui.status = node('p', 'pc-status');
     ui.status.setAttribute('role', 'status');
     ui.status.setAttribute('aria-live', 'polite');
+    ui.cropEditor = createCropEditor({
+        onCancel: cancelCrop,
+        onApply(value, rect) {
+            if (value !== image) ui.result.value = '';
+            image = value;
+            cropRect = rect;
+            ui.preview.src = image;
+            showView('outfit');
+            ui.crop.focus({ preventScroll: true });
+            status('Фото готово. Модель получит область из рамки.');
+        },
+    });
+    ui.panels.crop = ui.cropEditor.element;
+    ui.body.append(ui.cropEditor.element);
     const footer = node('footer', 'pc-footer');
-    footer.append(ui.status, ui.generateActions, ui.outputActions);
+    footer.append(ui.status, ui.generateActions, ui.outputActions, ui.cropEditor.actions);
     dialog.append(header, tabs, ui.body, footer);
     showView('outfit');
     dialog.addEventListener('paste', event => {
@@ -441,7 +513,11 @@ function createDialog() {
     });
     dialog.addEventListener('close', () => {
         activeRequest?.abort();
+        if (ui.view === 'crop') showView('outfit');
         returnFocus?.focus();
+    });
+    dialog.addEventListener('cancel', event => {
+        if (ui.view === 'crop') { event.preventDefault(); cancelCrop(); }
     });
     document.body.append(dialog);
     const fitViewport = () => {

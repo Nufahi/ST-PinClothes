@@ -1,12 +1,12 @@
 {
-    "display_name": "PinClothes — Pinterest и одежда",
+    "display_name": "Pinterest",
     "loading_order": 100,
     "requires": [],
     "optional": ["connection-manager"],
     "js": "index.js",
     "css": "style.css",
     "author": "Nufahi",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "homePage": "https://github.com/Nufahi/ST-PinClothes",
     "auto_update": true
 }

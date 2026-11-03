@@ -30,10 +30,53 @@ function node(tag, className, text) {
 }
 
 function button(text, action) {
-    const element = node('button', 'menu_button pc-button', text);
+    const element = node('button', 'pc-button', text);
     element.type = 'button';
     element.addEventListener('click', action);
     return element;
+}
+
+function icon(name) {
+    const paths = {
+        close: 'M6 6l12 12M18 6L6 18',
+        settings: 'M4 7h16M4 17h16M9 4v6M15 14v6',
+        arrow: 'M7 17L17 7M7 7h10v10',
+        image: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM3 16l5-5 5 5 3-3 5 5M15 7h.01',
+        refresh: 'M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1',
+        download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
+        trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
+        copy: 'M9 9h12v12H9zM15 5V3H3v12h2',
+        spark: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z',
+    };
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.classList.add('pc-icon');
+    const path = document.createElementNS(svg.namespaceURI, 'path');
+    path.setAttribute('d', paths[name]);
+    svg.append(path);
+    return svg;
+}
+
+function iconButton(label, name, action) {
+    const element = button('', action);
+    element.classList.add('pc-icon-button');
+    element.setAttribute('aria-label', label);
+    element.title = label;
+    element.append(icon(name));
+    return element;
+}
+
+function showView(view) {
+    ui.view = view;
+    for (const [name, panel] of Object.entries(ui.panels)) panel.hidden = name !== view;
+    for (const [name, tab] of Object.entries(ui.tabs)) {
+        tab.setAttribute('aria-selected', String(name === view));
+        tab.tabIndex = name === view || (view === 'settings' && name === 'outfit') ? 0 : -1;
+    }
+    ui.settingsButton.setAttribute('aria-expanded', String(view === 'settings'));
+    ui.body.scrollTop = 0;
+    syncButtons();
 }
 
 function field(label, input) {
@@ -59,10 +102,18 @@ function syncButtons() {
     ui.comment.disabled = busy;
     ui.tokens.disabled = busy;
     ui.file.disabled = busy;
+    ui.drop.disabled = busy || loadingImage;
     ui.clear.disabled = busy || loadingImage || !image;
     ui.download.disabled = !originalFile;
     ui.copy.disabled = !ui.result.value.trim();
     ui.insert.disabled = !ui.result.value.trim();
+    ui.imageActions.hidden = !image;
+    ui.drop.classList.toggle('pc-has-image', Boolean(image));
+    ui.resultEmpty.hidden = Boolean(ui.result.value.trim());
+    ui.outputActions.hidden = busy || ui.view !== 'result';
+    ui.generateActions.hidden = !busy && ui.view !== 'outfit';
+    ui.generate.hidden = busy;
+    ui.generate.textContent = loadingImage ? 'Подготовка фото…' : 'Описать одежду';
     dialog.setAttribute('aria-busy', String(busy || loadingImage));
 }
 
@@ -124,7 +175,7 @@ async function loadImage(file) {
         ui.placeholder.hidden = true;
         ui.filename.textContent = file.name || 'Изображение из буфера';
         ui.result.value = '';
-        status('Изображение готово. Выбери профиль и нажми «Описать одежду».');
+        status('Фото готово к описанию.');
     } catch (error) {
         if (version === imageVersion) status(errorMessage(error), true);
     } finally {
@@ -156,7 +207,7 @@ function openPinterest() {
     const url = query ? `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(query)}` : 'https://www.pinterest.com/';
     // A real browsing window supports login and downloads; Pinterest blocks iframes.
     window.open(url, '_blank', 'popup,width=1100,height=850,noopener,noreferrer');
-    status('Pinterest открыт в окне или вкладке. Скачай картинку и прикрепи её здесь. Если окно не появилось, разреши всплывающие окна для Таверны.');
+    status('Скачай фото в Pinterest и прикрепи его здесь.');
 }
 
 async function generate() {
@@ -177,7 +228,9 @@ async function generate() {
             signal: controller.signal,
         });
         ui.result.value = result;
-        status('Готово. Можно отредактировать, скопировать или вставить в сообщение.');
+        showView('result');
+        if (dialog.open) ui.tabs.result.focus({ preventScroll: true });
+        status('Готово — текст можно отредактировать.');
     } catch (error) {
         const reason = controller.signal.reason;
         if (controller.signal.aborted && reason?.name !== 'TimeoutError') status('Запрос отменён.');
@@ -229,29 +282,69 @@ function createDialog() {
     dialog.id = 'pinclothes-dialog';
     dialog.setAttribute('aria-labelledby', 'pc-title');
     const header = node('header', 'pc-header');
-    const title = node('h2', '', 'PinClothes');
+    const brand = node('div', 'pc-heading');
+    const title = node('h2', '', 'Pinterest');
     title.id = 'pc-title';
-    header.append(title, button('Закрыть', () => dialog.close()));
-    const body = node('div', 'pc-body');
-    const pinterest = node('section', 'pc-card');
-    pinterest.append(node('h3', '', '1. Найти в Pinterest'));
-    ui = {};
-    ui.search = node('input', 'text_pole');
-    ui.search.placeholder = 'Например: leopard print outfit';
+    const headingText = node('div');
+    headingText.append(title, node('p', 'pc-subtitle', 'Из картинки — в описание'));
+    const logo = node('span', 'pc-brand', 'P');
+    logo.setAttribute('aria-hidden', 'true');
+    brand.append(logo, headingText);
+    ui = { panels: {}, tabs: {}, view: 'outfit' };
+    ui.settingsButton = iconButton('Настройки Pinterest', 'settings', () => showView(ui.view === 'settings' ? 'outfit' : 'settings'));
+    ui.settingsButton.setAttribute('aria-controls', 'pc-panel-settings');
+    const close = iconButton('Закрыть', 'close', () => dialog.close());
+    close.autofocus = true;
+    const headerActions = node('div', 'pc-actions');
+    headerActions.append(ui.settingsButton, close);
+    header.append(brand, headerActions);
+    const tabs = node('div', 'pc-tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Pinterest');
+    for (const [name, label] of [['outfit', 'Образ'], ['result', 'Результат']]) {
+        const tab = button(label, () => showView(name));
+        tab.id = `pc-tab-${name}`;
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-controls', `pc-panel-${name}`);
+        tab.addEventListener('keydown', event => {
+            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+                event.preventDefault();
+                const next = event.key === 'Home' ? 'outfit' : event.key === 'End' ? 'result' : name === 'outfit' ? 'result' : 'outfit';
+                showView(next);
+                ui.tabs[next].focus();
+            }
+        });
+        ui.tabs[name] = tab;
+        tabs.append(tab);
+    }
+    ui.body = node('div', 'pc-body');
+    for (const name of ['outfit', 'result', 'settings']) {
+        const panel = node('section', 'pc-panel');
+        panel.id = `pc-panel-${name}`;
+        if (name !== 'settings') {
+            panel.setAttribute('role', 'tabpanel');
+            panel.setAttribute('aria-labelledby', `pc-tab-${name}`);
+        }
+        ui.panels[name] = panel;
+        ui.body.append(panel);
+    }
+    const outfit = ui.panels.outfit;
+    const pinterest = node('div', 'pc-search');
+    ui.search = node('input', 'pc-input');
+    ui.search.placeholder = 'Найти образ в Pinterest';
+    ui.search.setAttribute('aria-label', 'Поиск в Pinterest');
     ui.search.type = 'search';
     ui.search.addEventListener('keydown', event => {
         if (event.key === 'Enter') { event.preventDefault(); openPinterest(); }
     });
-    pinterest.append(field('Поиск (необязательно)', ui.search), button('Открыть Pinterest ↗', openPinterest));
-    pinterest.append(node('p', 'pc-hint', 'Pinterest откроется отдельным окном, на телефоне — возможно вкладкой. Сайт запрещает встраивание. Скачай нужную картинку и вернись сюда.'));
-
-    const columns = node('div', 'pc-columns');
-    const upload = node('section', 'pc-card');
-    upload.append(node('h3', '', '2. Прикрепить изображение'));
-    const drop = node('div', 'pc-drop');
-    drop.tabIndex = 0;
-    drop.setAttribute('aria-label', 'Область для перетаскивания или вставки изображения');
-    ui.placeholder = node('p', 'pc-hint', 'Перетащи картинку сюда или вставь из буфера (Ctrl+V / ⌘V).');
+    pinterest.append(ui.search, iconButton('Открыть Pinterest', 'arrow', openPinterest));
+    const upload = node('div', 'pc-upload');
+    const drop = button('', () => ui.file.click());
+    ui.drop = drop;
+    drop.classList.add('pc-drop');
+    drop.setAttribute('aria-label', 'Выбрать фото');
+    ui.placeholder = node('span', 'pc-upload-placeholder');
+    ui.placeholder.append(icon('image'), node('strong', '', 'Добавить фото'), node('span', 'pc-hint', 'Из галереи или файлов'));
     ui.preview = node('img', 'pc-preview');
     ui.preview.alt = 'Прикреплённое изображение одежды';
     ui.preview.hidden = true;
@@ -265,36 +358,42 @@ function createDialog() {
     });
     ui.file = node('input', 'pc-file');
     ui.file.type = 'file';
+    ui.file.hidden = true;
+    ui.file.setAttribute('aria-label', 'Выбрать файл');
     ui.file.accept = 'image/jpeg,image/png,image/webp,image/gif';
     ui.file.addEventListener('change', () => void loadImage(ui.file.files[0]));
     ui.filename = node('div', 'pc-hint pc-filename');
-    ui.clear = button('Убрать', clearImage);
-    ui.download = button('Скачать оригинал', downloadImage);
-    const imageActions = node('div', 'pc-actions');
-    imageActions.append(ui.clear, ui.download);
-    upload.append(drop, field('Выбрать файл', ui.file), ui.filename, imageActions);
-    upload.append(node('p', 'pc-hint', 'JPG, PNG, WebP, GIF · до 25 МБ. Для модели: JPEG до 2048 px; для GIF — первый кадр.'));
+    ui.clear = iconButton('Убрать', 'trash', clearImage);
+    ui.download = iconButton('Скачать оригинал', 'download', downloadImage);
+    ui.imageActions = node('div', 'pc-image-actions');
+    ui.imageActions.append(ui.filename, ui.download, ui.clear);
+    upload.append(drop, ui.file, ui.imageActions);
 
-    const analysis = node('section', 'pc-card');
-    analysis.append(node('h3', '', '3. Описать одежду'));
-    ui.profile = node('select', 'text_pole');
+    ui.profile = node('select', 'pc-input');
     ui.profile.addEventListener('change', () => {
         settings().profileId = ui.profile.value;
         saveSettings();
         syncButtons();
     });
-    ui.refresh = button('Обновить профили', refreshProfiles);
-    analysis.append(field('Профиль подключения', ui.profile), ui.refresh);
-    analysis.append(node('p', 'pc-hint', 'Нужен профиль Chat Completion с поддержкой изображений (vision). Картинка и комментарий отправляются выбранной модели.'));
-    ui.comment = node('textarea', 'text_pole');
-    ui.comment.rows = 3;
+    ui.refresh = iconButton('Обновить профили', 'refresh', refreshProfiles);
+    const profileRow = node('div', 'pc-profile-row');
+    profileRow.append(field('Профиль подключения', ui.profile), ui.refresh);
+    ui.comment = node('textarea', 'pc-input');
+    ui.comment.rows = 2;
     ui.comment.maxLength = 4000;
-    ui.comment.placeholder = 'Например: опиши также очки. Или: только одежду девушки слева.';
-    analysis.append(field('Дополнительный комментарий', ui.comment));
-    analysis.append(node('p', 'pc-hint', 'По умолчанию — только одежда. Обувь, сумки, очки, украшения, резинки, бутылки и прочие предметы исключены. Чтобы включить что-то из этого, прямо назови предмет в комментарии.'));
+    ui.comment.placeholder = 'Например: добавь очки, только девушка слева…';
+    const comment = node('details', 'pc-comment');
+    comment.append(node('summary', '', 'Добавить пожелание'), field('Дополнительный комментарий', ui.comment));
+    outfit.append(pinterest, upload, profileRow, comment, node('p', 'pc-hint pc-rule', 'Только одежда. Обувь и аксессуары — по твоей просьбе.'));
+
+    const preferences = ui.panels.settings;
+    preferences.append(node('h3', '', 'Настройки'), sendbarToggle());
+    preferences.append(node('p', 'pc-hint', 'Выбирай профиль Chat Completion с vision-моделью. Фото и пожелание отправятся через него, отдельно от чата.'));
+    const help = node('details', 'pc-advanced');
+    help.append(node('summary', '', 'Как добавить картинку'), node('p', 'pc-hint', 'Поиск открывает Pinterest в другой вкладке или окне. Скачай фото, вернись сюда и нажми «Добавить фото». Если Pinterest не открылся, разреши всплывающие окна для Таверны. Можно также перетащить файл или вставить изображение из буфера. JPG, PNG, WebP, GIF · до 25 МБ.'));
     const advanced = node('details', 'pc-advanced');
     advanced.append(node('summary', '', 'Промпт и лимит ответа'));
-    ui.tokens = node('input', 'text_pole');
+    ui.tokens = node('input', 'pc-input');
     ui.tokens.type = 'number';
     ui.tokens.min = '256';
     ui.tokens.max = '8192';
@@ -307,30 +406,34 @@ function createDialog() {
         saveSettings();
     });
     advanced.append(field('Лимит токенов (включая рассуждения модели)', ui.tokens), node('pre', 'pc-prompt', SYSTEM_PROMPT));
-    analysis.append(advanced);
+    preferences.append(help, advanced);
     ui.generate = button('Описать одежду', generate);
     ui.generate.classList.add('pc-primary');
     ui.cancel = button('Отменить', () => activeRequest?.abort());
-    const actions = node('div', 'pc-actions');
-    actions.append(ui.generate, ui.cancel);
-    analysis.append(actions);
-    columns.append(upload, analysis);
+    ui.cancel.classList.add('pc-wide');
+    ui.generateActions = node('div', 'pc-actions');
+    ui.generateActions.append(ui.generate, ui.cancel);
 
-    const output = node('section', 'pc-card');
-    ui.result = node('textarea', 'text_pole pc-result');
-    ui.result.rows = 4;
-    ui.result.placeholder = 'clothes: brown leopard-print halter top (ruched, tie-neck, backless), baggy low-rise light-wash denim jeans';
+    const output = ui.panels.result;
+    ui.resultEmpty = node('div', 'pc-empty');
+    ui.resultEmpty.append(icon('spark'), node('h3', '', 'Здесь будет описание'), node('p', 'pc-hint', 'Добавь фото во вкладке «Образ» и нажми «Описать одежду».'));
+    ui.result = node('textarea', 'pc-input pc-result');
+    ui.result.rows = 7;
+    ui.result.placeholder = 'clothes: …';
     ui.result.addEventListener('input', syncButtons);
-    ui.copy = button('Копировать', copyResult);
+    ui.copy = iconButton('Копировать', 'copy', copyResult);
     ui.insert = button('Вставить в сообщение', insertResult);
-    const outputActions = node('div', 'pc-actions');
-    outputActions.append(ui.copy, ui.insert);
-    output.append(field('Описание (можно исправить)', ui.result), outputActions);
+    ui.insert.classList.add('pc-primary');
+    ui.outputActions = node('div', 'pc-actions');
+    ui.outputActions.append(ui.copy, ui.insert);
+    output.append(ui.resultEmpty, field('Описание (можно исправить)', ui.result));
     ui.status = node('p', 'pc-status');
     ui.status.setAttribute('role', 'status');
     ui.status.setAttribute('aria-live', 'polite');
-    body.append(pinterest, columns, output, ui.status);
-    dialog.append(header, body);
+    const footer = node('footer', 'pc-footer');
+    footer.append(ui.status, ui.generateActions, ui.outputActions);
+    dialog.append(header, tabs, ui.body, footer);
+    showView('outfit');
     dialog.addEventListener('paste', event => {
         const item = Array.from(event.clipboardData?.items || []).find(item => item.type.startsWith('image/'));
         if (item && !activeRequest) { event.preventDefault(); void loadImage(item.getAsFile()); }
@@ -340,6 +443,15 @@ function createDialog() {
         returnFocus?.focus();
     });
     document.body.append(dialog);
+    const fitViewport = () => {
+        const viewport = window.visualViewport;
+        if (!viewport) return;
+        dialog.style.setProperty('--pc-viewport-height', `${viewport.height}px`);
+        dialog.style.setProperty('--pc-viewport-top', `${viewport.offsetTop}px`);
+    };
+    window.visualViewport?.addEventListener('resize', fitViewport);
+    window.visualViewport?.addEventListener('scroll', fitViewport);
+    fitViewport();
 }
 
 function open() {
@@ -350,7 +462,42 @@ function open() {
     dialog.showModal();
 }
 
+function syncSendbar() {
+    const enabled = settings().showSendbar === true;
+    let shortcut = document.getElementById('pinclothes-sendbar');
+    const container = document.getElementById('leftSendForm') || document.getElementById('rightSendForm');
+    if (enabled && !shortcut && container) {
+        shortcut = button('', open);
+        shortcut.id = 'pinclothes-sendbar';
+        shortcut.className = 'pc-sendbar interactable';
+        shortcut.title = 'Pinterest';
+        shortcut.setAttribute('aria-label', 'Pinterest');
+        shortcut.setAttribute('aria-haspopup', 'dialog');
+        const mark = node('span', 'pc-sendbar-mark', 'P');
+        mark.setAttribute('aria-hidden', 'true');
+        shortcut.append(mark);
+        container.append(shortcut);
+    }
+    if (!enabled) shortcut?.remove();
+    document.querySelectorAll('.pc-sendbar-toggle').forEach(input => { input.checked = enabled; });
+}
+
+function sendbarToggle() {
+    const label = node('label', 'pc-toggle');
+    const input = node('input', 'pc-sendbar-toggle');
+    input.type = 'checkbox';
+    input.checked = settings().showSendbar === true;
+    input.addEventListener('change', () => {
+        settings().showSendbar = input.checked;
+        saveSettings();
+        syncSendbar();
+    });
+    label.append(input, node('span', '', 'Иконка в строке ввода'));
+    return label;
+}
+
 function init() {
+    syncSendbar();
     if (document.getElementById('pinclothes-wand')) return;
     const menu = document.getElementById('extensionsMenu');
     if (!menu) return;
@@ -358,9 +505,9 @@ function init() {
     entry.id = 'pinclothes-wand';
     entry.tabIndex = 0;
     entry.setAttribute('role', 'button');
-    const icon = node('span', 'extensionsMenuExtensionButton fa-solid fa-shirt');
-    icon.setAttribute('aria-hidden', 'true');
-    entry.append(icon, node('span', '', 'Pinterest · Описать одежду'));
+    const mark = node('span', 'extensionsMenuExtensionButton pc-menu-mark', 'P');
+    mark.setAttribute('aria-hidden', 'true');
+    entry.append(mark, node('span', '', 'Pinterest'));
     entry.addEventListener('click', () => { menu.style.display = 'none'; open(); });
     entry.addEventListener('keydown', event => {
         if (['Enter', ' '].includes(event.key)) { event.preventDefault(); entry.click(); }
@@ -369,7 +516,7 @@ function init() {
     const container = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
     if (container) {
         const panel = node('div', 'pc-settings');
-        panel.append(button('PinClothes — Pinterest и описание одежды', open));
+        panel.append(button('Pinterest', open), sendbarToggle());
         container.append(panel);
     }
 }

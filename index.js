@@ -516,12 +516,6 @@ function init() {
         if (['Enter', ' '].includes(event.key)) { event.preventDefault(); entry.click(); }
     });
     menu.append(entry);
-    const container = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
-    if (container) {
-        const panel = node('div', 'pc-settings');
-        panel.append(button('Pinterest', open), sendbarToggle());
-        container.append(panel);
-    }
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });

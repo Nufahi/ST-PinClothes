@@ -90,7 +90,7 @@ try:
         assert page.locator('#pinclothes-sendbar + #options_button').count() == 1
         page.evaluate('appReady(); appReady()')
         assert page.locator('#pinclothes-sendbar').count() == 1
-        assert page.locator('.pc-settings').get_by_label('Иконка в строке ввода').is_checked()
+        assert page.locator('#extensions_settings2').inner_html() == ''
         page.get_by_role('tab', name='Образ', exact=True).click()
         page.get_by_label('Поиск в Pinterest').fill('leopard & denim')
         page.get_by_role('button', name='Открыть Pinterest').click()
@@ -142,7 +142,7 @@ try:
         page.get_by_role('button', name='Описать одежду', exact=True).click()
         page.get_by_role('button', name='Закрыть', exact=True).click()
         page.wait_for_function('document.querySelector(".pc-status").textContent === "Запрос отменён."')
-        page.locator('.pc-settings button').click()
+        page.locator('#pinclothes-sendbar').tap()
 
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.locator('.pc-dialog').evaluate('(d) => d.getBoundingClientRect().width <= 390')

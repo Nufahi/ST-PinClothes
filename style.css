@@ -78,7 +78,7 @@
 .pc-dialog .pc-profile-row { display: flex; align-items: flex-end; gap: 6px; }
 .pc-dialog .pc-profile-row .pc-field { flex: 1; }
 .pc-dialog .pc-actions { display: flex; align-items: center; gap: 8px; }
-.pc-dialog .pc-button, .pc-settings .pc-button {
+.pc-dialog .pc-button {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     width: auto; height: auto; min-height: 48px; margin: 0; padding: 10px 16px;
     border: 1px solid var(--pc-line, #8885); border-radius: 12px;
@@ -107,7 +107,6 @@
 .pc-dialog :focus-visible { outline: 2px solid var(--pc-accent); outline-offset: 2px; }
 .pc-toggle { display: flex; align-items: center; gap: 12px; min-height: 48px; cursor: pointer; font-size: 14px; }
 .pc-toggle input { flex-shrink: 0; width: 20px; height: 20px; margin: 0; accent-color: #e63350; }
-.pc-settings { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 8px 0; }
 .pc-pinterest-icon {
     display: inline-block; flex-shrink: 0; width: 1em; height: 1em;
     background-color: currentColor;

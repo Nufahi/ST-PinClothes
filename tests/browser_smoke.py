@@ -18,7 +18,7 @@ FIXTURE = b'''<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="stylesheet" href="/style.css"></head><body>
 <div id="extensionsMenu"></div><div id="extensions_settings2"></div>
-<form id="send_form"><div id="leftSendForm"></div><textarea id="send_textarea">Existing draft</textarea></form>
+<form id="send_form"><div id="leftSendForm" style="display:flex;font-size:24px"><div id="options_button">Menu</div></div><textarea id="send_textarea">Existing draft</textarea></form>
 <script>
 window.calls = [];
 window.mode = 'success';
@@ -87,6 +87,7 @@ try:
         page.get_by_role('button', name='Настройки Pinterest', exact=True).click()
         page.locator('dialog').get_by_label('Иконка в строке ввода').check()
         assert page.locator('#leftSendForm #pinclothes-sendbar').count() == 1
+        assert page.locator('#pinclothes-sendbar + #options_button').count() == 1
         page.evaluate('appReady(); appReady()')
         assert page.locator('#pinclothes-sendbar').count() == 1
         assert page.locator('.pc-settings').get_by_label('Иконка в строке ввода').is_checked()

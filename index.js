@@ -287,7 +287,8 @@ function createDialog() {
     title.id = 'pc-title';
     const headingText = node('div');
     headingText.append(title, node('p', 'pc-subtitle', 'Из картинки — в описание'));
-    const logo = node('span', 'pc-brand', 'P');
+    const logo = node('span', 'pc-brand');
+    logo.append(node('span', 'pc-pinterest-icon'));
     logo.setAttribute('aria-hidden', 'true');
     brand.append(logo, headingText);
     ui = { panels: {}, tabs: {}, view: 'outfit' };
@@ -465,18 +466,20 @@ function open() {
 function syncSendbar() {
     const enabled = settings().showSendbar === true;
     let shortcut = document.getElementById('pinclothes-sendbar');
+    const optionsButton = document.getElementById('options_button');
     const container = document.getElementById('leftSendForm') || document.getElementById('rightSendForm');
-    if (enabled && !shortcut && container) {
+    if (enabled && !shortcut && (optionsButton || container)) {
         shortcut = button('', open);
         shortcut.id = 'pinclothes-sendbar';
         shortcut.className = 'pc-sendbar interactable';
         shortcut.title = 'Pinterest';
         shortcut.setAttribute('aria-label', 'Pinterest');
         shortcut.setAttribute('aria-haspopup', 'dialog');
-        const mark = node('span', 'pc-sendbar-mark', 'P');
+        const mark = node('span', 'pc-pinterest-icon');
         mark.setAttribute('aria-hidden', 'true');
         shortcut.append(mark);
-        container.append(shortcut);
+        if (optionsButton) optionsButton.before(shortcut);
+        else container.append(shortcut);
     }
     if (!enabled) shortcut?.remove();
     document.querySelectorAll('.pc-sendbar-toggle').forEach(input => { input.checked = enabled; });
@@ -505,7 +508,7 @@ function init() {
     entry.id = 'pinclothes-wand';
     entry.tabIndex = 0;
     entry.setAttribute('role', 'button');
-    const mark = node('span', 'extensionsMenuExtensionButton pc-menu-mark', 'P');
+    const mark = node('span', 'extensionsMenuExtensionButton pc-pinterest-icon');
     mark.setAttribute('aria-hidden', 'true');
     entry.append(mark, node('span', '', 'Pinterest'));
     entry.addEventListener('click', () => { menu.style.display = 'none'; open(); });

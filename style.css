@@ -36,7 +36,8 @@
 .pc-dialog h3 { font-size: 17px; }
 .pc-dialog .pc-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 18px 16px 12px; flex-shrink: 0; }
 .pc-dialog .pc-heading { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.pc-dialog .pc-brand { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 14px; background: var(--pc-accent); color: #fff; font: bold italic 30px Georgia, serif; }
+.pc-dialog .pc-brand { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 14px; background: var(--pc-accent); color: #fff; }
+.pc-dialog .pc-brand .pc-pinterest-icon { width: 26px; height: 26px; }
 .pc-dialog .pc-subtitle { font-size: 11px; opacity: 0.6; margin-top: 2px; }
 .pc-dialog .pc-icon { width: 21px; height: 21px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .pc-dialog .pc-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 16px 4px; padding: 4px; border-radius: 16px; background: var(--pc-soft); flex-shrink: 0; }
@@ -107,14 +108,20 @@
 .pc-toggle { display: flex; align-items: center; gap: 12px; min-height: 48px; cursor: pointer; font-size: 14px; }
 .pc-toggle input { flex-shrink: 0; width: 20px; height: 20px; margin: 0; accent-color: #e63350; }
 .pc-settings { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 8px 0; }
-.pc-menu-mark { font-family: Georgia, serif; font-weight: bold; font-style: italic; }
-#pinclothes-sendbar {
-    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px;
-    width: 44px; height: 44px; min-width: 44px; margin: 0; padding: 0; align-self: center;
-    border: 0; background: transparent; color: var(--SmartThemeBodyColor, #eee); cursor: pointer;
-    touch-action: manipulation;
+.pc-pinterest-icon {
+    display: inline-block; flex-shrink: 0; width: 1em; height: 1em;
+    background-color: currentColor;
+    -webkit-mask: url('./pinterest.svg') center / contain no-repeat;
+    mask: url('./pinterest.svg') center / contain no-repeat;
 }
-#pinclothes-sendbar .pc-sendbar-mark { display: grid; place-items: center; width: 23px; height: 23px; border: 2px solid currentColor; border-radius: 50%; font: bold italic 20px Georgia, serif; line-height: 1; }
+#pinclothes-sendbar {
+    display: flex; align-items: center; justify-content: center;
+    width: auto; height: auto; min-width: 0; margin: 0; padding: 2px;
+    border: 0; border-radius: 0; background: transparent; color: inherit; cursor: pointer;
+    font: inherit; line-height: inherit; box-shadow: none; opacity: .7;
+    transition: opacity .15s; touch-action: manipulation;
+}
+#pinclothes-sendbar:hover, #pinclothes-sendbar:focus-visible { opacity: 1; }
 #pinclothes-sendbar:focus-visible { outline: 2px solid #e63350; outline-offset: -2px; border-radius: 10px; }
 
 @media (hover: hover) {

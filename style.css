@@ -121,6 +121,7 @@
     font: inherit; line-height: inherit; box-shadow: none; opacity: .7;
     transition: opacity .15s; touch-action: manipulation;
 }
+#pinclothes-sendbar .pc-pinterest-icon { width: 18px; height: 18px; }
 #pinclothes-sendbar:hover, #pinclothes-sendbar:focus-visible { opacity: 1; }
 #pinclothes-sendbar:focus-visible { outline: 2px solid #e63350; outline-offset: -2px; border-radius: 10px; }
 

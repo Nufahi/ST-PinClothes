@@ -1,0 +1,57 @@
+.pc-dialog {
+    --pc-border: var(--SmartThemeBorderColor, #52525b);
+    box-sizing: border-box;
+    width: min(960px, calc(100vw - 24px));
+    max-width: none;
+    max-height: calc(100dvh - 24px);
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--pc-border);
+    border-radius: 14px;
+    background: var(--SmartThemeBlurTintColor, #202027);
+    color: var(--SmartThemeBodyColor, #eee);
+    font-family: var(--mainFontFamily, sans-serif);
+    text-align: left;
+    box-shadow: 0 16px 60px #0008;
+    overflow: hidden;
+}
+
+.pc-dialog[open] { display: flex; flex-direction: column; }
+.pc-dialog::backdrop { background: #0009; }
+.pc-dialog *, .pc-dialog *::before, .pc-dialog *::after { box-sizing: border-box; }
+.pc-dialog [hidden] { display: none !important; }
+.pc-dialog .pc-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--pc-border); }
+.pc-dialog h2, .pc-dialog h3, .pc-dialog p { margin: 0; }
+.pc-dialog h2 { font-size: 1.2em; }
+.pc-dialog h3 { font-size: 1em; }
+.pc-dialog .pc-body { display: grid; gap: 14px; padding: 16px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+.pc-dialog .pc-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--pc-border); border-radius: 10px; min-width: 0; }
+.pc-dialog .pc-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 14px; align-items: start; }
+.pc-dialog .pc-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pc-dialog .text_pole { width: 100%; margin: 0; font: inherit; }
+.pc-dialog textarea { resize: vertical; }
+.pc-dialog .pc-hint { font-size: 0.85em; line-height: 1.5; opacity: 0.8; }
+.pc-dialog .pc-filename { overflow-wrap: anywhere; }
+.pc-dialog .pc-drop { display: grid; place-items: center; min-height: 180px; padding: 10px; border: 2px dashed var(--pc-border); border-radius: 8px; }
+.pc-dialog .pc-drop.pc-drag { border-color: var(--SmartThemeQuoteColor, #d89aab); background: #ffffff10; }
+.pc-dialog .pc-preview { display: block; width: 100%; max-height: 350px; object-fit: contain; border-radius: 4px; }
+.pc-dialog .pc-file { max-width: 100%; font: inherit; }
+.pc-dialog .pc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pc-dialog .pc-button, .pc-settings .pc-button { width: auto; height: auto; min-height: 36px; margin: 0; padding: 8px 12px; white-space: normal; font: inherit; cursor: pointer; }
+.pc-dialog .pc-button:disabled { opacity: 0.45; cursor: default; }
+.pc-dialog .pc-primary { border-color: var(--SmartThemeQuoteColor, #d89aab); font-weight: 600; }
+.pc-dialog .pc-advanced summary { cursor: pointer; margin-bottom: 8px; }
+.pc-dialog .pc-prompt { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow-y: auto; font-size: 0.8em; }
+.pc-dialog .pc-status { font-size: 0.9em; line-height: 1.5; overflow-wrap: anywhere; }
+.pc-dialog .pc-error { color: #ffafaf; }
+.pc-dialog :focus-visible { outline: 2px solid var(--SmartThemeQuoteColor, #d89aab); outline-offset: 2px; }
+.pc-settings { padding: 8px 0; }
+
+@media (max-width: 650px) {
+    .pc-dialog { width: calc(100vw - 12px); max-height: calc(100dvh - 12px); }
+    .pc-dialog .pc-columns { grid-template-columns: minmax(0, 1fr); }
+    .pc-dialog .pc-body { padding: 10px; gap: 10px; }
+    .pc-dialog .pc-card { padding: 10px; }
+    .pc-dialog .pc-button { min-height: 42px; }
+    .pc-dialog .pc-preview { max-height: 260px; }
+}

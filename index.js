@@ -11,6 +11,7 @@ let originalFile;
 let imageVersion = 0;
 let loadingImage = false;
 let activeRequest;
+let inserting = false;
 let returnFocus;
 let ui;
 let fieldNumber = 0;
@@ -115,8 +116,8 @@ function syncButtons() {
     ui.clear.disabled = busy || loadingImage || !image;
     ui.crop.disabled = busy || loadingImage || !image;
     ui.download.disabled = !originalFile;
-    ui.copy.disabled = !ui.result.value.trim();
-    ui.insert.disabled = !ui.result.value.trim();
+    ui.copy.disabled = inserting || !ui.result.value.trim();
+    ui.insert.disabled = inserting || !ui.result.value.trim();
     ui.imageActions.hidden = !image;
     ui.drop.classList.toggle('pc-has-image', Boolean(image));
     ui.resultEmpty.hidden = Boolean(ui.result.value.trim());
@@ -273,27 +274,55 @@ async function generate() {
     }
 }
 
-async function copyResult() {
+async function copyText(text) {
     try {
-        await navigator.clipboard.writeText(ui.result.value);
-        status('Описание скопировано.');
+        await navigator.clipboard.writeText(text);
+        return true;
     } catch {
-        ui.result.focus();
-        ui.result.select();
-        if (document.execCommand('copy')) status('Описание скопировано.');
-        else status('Текст выделен — скопируй его вручную.', true);
+        const temporary = node('textarea');
+        temporary.value = text;
+        temporary.style.cssText = 'position:fixed;opacity:0;pointer-events:none;font-size:16px';
+        dialog.append(temporary);
+        try {
+            temporary.focus({ preventScroll: true });
+            temporary.select();
+            return document.execCommand('copy');
+        } catch {
+            return false;
+        } finally {
+            temporary.remove();
+        }
     }
 }
 
-function insertResult() {
+async function copyResult() {
+    if (await copyText(ui.result.value.trim())) status('Описание скопировано.');
+    else {
+        ui.result.focus();
+        ui.result.select();
+        status('Текст выделен — скопируй его вручную.', true);
+    }
+}
+
+async function insertResult() {
+    if (inserting) return;
     const input = document.getElementById('send_textarea');
     if (!input || input.disabled) return status('Поле сообщения сейчас недоступно.', true);
     const text = ui.result.value.trim();
     if (!text) return;
+    inserting = true;
+    syncButtons();
     input.value = `${input.value}${input.value && !input.value.endsWith('\n') ? '\n' : ''}${text}`;
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    dialog.close();
-    input.focus();
+    const copied = await copyText(text);
+    inserting = false;
+    syncButtons();
+    if (copied) {
+        dialog.close();
+        input.focus();
+    } else {
+        status('В сообщение добавлено, но копирование не удалось. Нажми «Копировать» или скопируй текст вручную.', true);
+    }
 }
 
 function downloadImage() {
@@ -481,7 +510,7 @@ function createDialog() {
     ui.result.placeholder = 'clothes: …';
     ui.result.addEventListener('input', syncButtons);
     ui.copy = iconButton('Копировать', 'copy', copyResult);
-    ui.insert = button('Вставить в сообщение', insertResult);
+    ui.insert = button('Вставить и скопировать', insertResult);
     ui.insert.classList.add('pc-primary');
     ui.outputActions = node('div', 'pc-actions');
     ui.outputActions.append(ui.copy, ui.insert);

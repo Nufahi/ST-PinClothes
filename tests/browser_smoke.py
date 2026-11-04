@@ -74,6 +74,7 @@ try:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH'))
         page = browser.new_page(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True, device_scale_factor=2)
+        page.context.grant_permissions(['clipboard-read', 'clipboard-write'])
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(f'http://127.0.0.1:{server.server_port}/')
@@ -120,8 +121,10 @@ try:
         assert page.evaluate('ctx.extensionSettings.connectionManager.selectedProfile') == 'main'
         assert 'Hidden reasoning' not in page.locator('.pc-result').input_value()
 
-        page.get_by_role('button', name='Вставить в сообщение').click()
+        page.get_by_role('button', name='Вставить и скопировать').click()
+        page.wait_for_function('!document.querySelector("dialog").open')
         assert page.locator('#send_textarea').input_value() == 'Existing draft\nclothes: brown halter top, light-wash jeans'
+        assert page.evaluate('navigator.clipboard.readText()') == 'clothes: brown halter top, light-wash jeans'
         page.locator('#pinclothes-sendbar').tap()
         page.get_by_role('tab', name='Образ', exact=True).click()
         assert page.locator('select').input_value() == 'vision'

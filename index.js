@@ -1,6 +1,7 @@
 import { describe, errorMessage, getProfiles, SYSTEM_PROMPT, ACCESSORIES_PROMPT } from './api.js';
 import { createCropEditor } from './crop.js';
 import { createWardrobe, saveOutfit } from './wardrobe.js';
+import { createTagEditor } from './tags.js';
 
 const KEY = 'pinClothes';
 const context = () => SillyTavern.getContext();
@@ -114,6 +115,9 @@ function syncButtons() {
     ui.refresh.disabled = busy;
     ui.comment.disabled = busy;
     ui.clearComment.disabled = busy || !ui.comment.value;
+    ui.saveToWardrobe.disabled = busy;
+    ui.tags.setDisabled(busy || !ui.saveToWardrobe.checked);
+    ui.tagDetails.hidden = !ui.saveToWardrobe.checked;
     for (const option of ui.scopeOptions) option.disabled = busy;
     ui.tokens.disabled = busy;
     ui.file.disabled = busy;
@@ -189,6 +193,8 @@ async function loadImage(file) {
         fullImage = prepared;
         cropRect = undefined;
         originalFile = file;
+        ui.saveToWardrobe.checked = true;
+        ui.tags.setTags([]);
         ui.preview.src = image;
         ui.preview.hidden = false;
         ui.placeholder.hidden = true;
@@ -266,11 +272,15 @@ async function generate() {
         });
         clearTimeout(timeout);
         let saved = false;
-        try {
-            await saveOutfit(image, result, originalFile?.name || 'Изображение из буфера');
-            saved = true;
-        } catch (error) {
-            status(`Описание готово, но не сохранено в шкаф: ${errorMessage(error)}`, true);
+        if (ui.saveToWardrobe.checked) {
+            try {
+                await saveOutfit(image, result, originalFile?.name || 'Изображение из буфера', ui.tags.getTags());
+                saved = true;
+            } catch (error) {
+                status(`Описание готово, но не сохранено в шкаф: ${errorMessage(error)}`, true);
+            }
+        } else {
+            status('Готово. Здесь текст можно отредактировать.');
         }
         ui.result.value = result;
         showView('result');
@@ -499,7 +509,18 @@ function createDialog() {
     ui.clearComment.setAttribute('aria-label', 'Стереть пожелание');
     const comment = node('details', 'pc-comment');
     comment.append(node('summary', '', 'Добавить пожелание'), field('Дополнительный комментарий', ui.comment), ui.clearComment);
-    outfit.append(pinterest, upload, profileRow, scope, ui.rule, comment);
+    const collection = node('div', 'pc-collection-options');
+    const saveLabel = node('label', 'pc-toggle');
+    ui.saveToWardrobe = node('input');
+    ui.saveToWardrobe.type = 'checkbox';
+    ui.saveToWardrobe.checked = true;
+    ui.saveToWardrobe.addEventListener('change', syncButtons);
+    saveLabel.append(ui.saveToWardrobe, node('span', '', 'Добавлять в шкаф'));
+    ui.tags = createTagEditor({ node, button });
+    ui.tagDetails = node('details', 'pc-tag-details');
+    ui.tagDetails.append(node('summary', '', 'Теги образа'), ui.tags.element);
+    collection.append(saveLabel, ui.tagDetails);
+    outfit.append(pinterest, upload, profileRow, scope, ui.rule, comment, collection);
 
     const preferences = ui.panels.settings;
     preferences.append(node('h3', '', 'Настройки'), sendbarToggle());

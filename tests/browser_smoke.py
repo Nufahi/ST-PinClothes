@@ -128,6 +128,11 @@ try:
         page.get_by_label('Профиль подключения', exact=True).select_option('vision')
         page.get_by_text('Добавить пожелание', exact=True).click()
         page.get_by_label('Дополнительный комментарий').fill('Опиши также очки')
+        assert page.get_by_label('Добавлять в шкаф', exact=True).is_checked()
+        page.locator('.pc-tag-details > summary').click()
+        page.get_by_role('button', name='Женское', exact=True).click()
+        page.get_by_role('button', name='Летнее', exact=True).click()
+        page.get_by_label('Свои теги через запятую').fill('любимое, Любимое,  свидание  , женское, ')
         page.get_by_role('button', name='Описать одежду', exact=True).click()
         page.wait_for_function('document.querySelector(".pc-result").value.startsWith("clothes:")')
         assert page.get_by_role('tab', name='Результат', exact=True).get_attribute('aria-selected') == 'true'
@@ -144,12 +149,23 @@ try:
         # The collection stores compact binary previews, and releases them when hidden.
         assert page.evaluate('readWardrobe().then(items => items.length)') == 1
         assert page.evaluate('readWardrobe().then(items => items[0].preview.type)') == 'image/webp'
+        assert page.evaluate('readWardrobe().then(items => items[0].tags)') == ['Женское', 'Летнее', 'любимое', 'свидание']
         page.get_by_role('tab', name='Результат', exact=True).press('ArrowRight')
         page.locator('.pc-wardrobe-card').wait_for()
         assert page.locator('.pc-wardrobe-card').count() == 1
         page.locator('.pc-wardrobe-card').get_by_role('button', name='Копировать', exact=True).click()
         page.wait_for_function('navigator.clipboard.readText().then(text => text.startsWith("clothes:"))')
         assert page.evaluate('previewURLs.size') == 1
+        card = page.locator('.pc-wardrobe-card')
+        card.get_by_role('button', name='Теги', exact=True).click()
+        card.get_by_role('button', name='Женское', exact=True).click()
+        card.get_by_role('button', name='Мужское', exact=True).click()
+        card.get_by_label('Свои теги через запятую').fill('<b>кастом</b>')
+        card.get_by_role('button', name='Сохранить теги', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-wardrobe > [role=status]").textContent === "Теги сохранены."')
+        assert page.evaluate('readWardrobe().then(items => items[0].tags)') == ['Мужское', 'Летнее', '<b>кастом</b>']
+        assert card.locator('.pc-wardrobe-tags b').count() == 0
+        assert '<b>кастом</b>' in card.locator('.pc-wardrobe-tags').inner_text()
         page.get_by_role('tab', name='Шкаф', exact=True).press('ArrowLeft')
         assert page.locator('.pc-wardrobe-card').count() == 0
         assert page.evaluate('previewURLs.size') == 0
@@ -161,6 +177,16 @@ try:
         page.locator('#pinclothes-sendbar').tap()
         page.get_by_role('tab', name='Образ', exact=True).click()
         assert page.locator('select').input_value() == 'vision'
+
+        # Opting out leaves storage untouched but still returns the description.
+        page.get_by_label('Добавлять в шкаф', exact=True).uncheck()
+        opens = page.evaluate('wardrobeOpens')
+        page.get_by_role('button', name='Описать одежду', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-status").textContent === "Готово. Здесь текст можно отредактировать."')
+        assert page.evaluate('wardrobeOpens') == opens
+        assert page.evaluate('readWardrobe().then(items => items.length)') == 1
+        assert page.locator('.pc-result').input_value().startswith('clothes:')
+        page.get_by_role('tab', name='Образ', exact=True).click()
 
         # Crop a two-color image with a real touch drag; only the blue half reaches the model.
         crop_png = page.evaluate('''() => {
@@ -182,6 +208,9 @@ try:
         session.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
         page.get_by_role('button', name='Применить', exact=True).click()
         cropped = page.locator('.pc-preview').get_attribute('src')
+        assert page.get_by_label('Добавлять в шкаф', exact=True).is_checked()
+        assert page.get_by_label('Свои теги через запятую').input_value() == ''
+        assert page.get_by_role('button', name='Женское', exact=True).get_attribute('aria-pressed') == 'false'
         assert cropped != original
         pixels = page.evaluate('''async (src) => {
             const img = new Image(); img.src = src; await img.decode();
@@ -259,6 +288,8 @@ try:
         page.evaluate("mode = 'wait'")
         page.get_by_role('button', name='Описать одежду', exact=True).click()
         assert page.get_by_role('button', name='Только одежда', exact=True).is_disabled()
+        assert page.get_by_label('Добавлять в шкаф', exact=True).is_disabled()
+        assert page.get_by_role('button', name='Женское', exact=True).is_disabled()
         assert page.get_by_role('button', name='Обрезать фото', exact=True).is_disabled()
         page.get_by_role('tab', name='Результат', exact=True).click()
         page.get_by_role('button', name='Отменить', exact=True).click()
@@ -323,6 +354,7 @@ try:
         page.get_by_role('tab', name='Шкаф', exact=True).click()
         page.locator('.pc-wardrobe-card').first.wait_for()
         assert page.locator('.pc-wardrobe-card').count() == 3
+        assert '<b>кастом</b>' in page.locator('.pc-wardrobe-card').last.locator('.pc-wardrobe-tags').inner_text()
         page.get_by_role('button', name='Закрыть', exact=True).click()
         page.wait_for_function('previewURLs.size === 0')
         page.evaluate('document.getElementById("extensionsMenu").style.display = ""')

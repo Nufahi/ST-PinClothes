@@ -1,4 +1,5 @@
 import { errorMessage } from './api.js';
+import { createTagEditor, normalizeTags } from './tags.js';
 
 const DATABASE = 'pinClothes-wardrobe';
 const STORE = 'items';
@@ -58,10 +59,10 @@ async function thumbnail(source) {
     }
 }
 
-export async function saveOutfit(source, description, name) {
+export async function saveOutfit(source, description, name, tags = []) {
     const preview = await thumbnail(source);
     return transaction('readwrite', (store, done) => {
-        const request = store.add({ preview, description, name, createdAt: Date.now() });
+        const request = store.add({ preview, description, name, tags: normalizeTags(tags), createdAt: Date.now() });
         request.onsuccess = () => done(request.result);
     });
 }
@@ -85,7 +86,7 @@ function readPage(before) {
 
 export function createWardrobe({ node, button, iconButton, copyText }) {
     const element = node('div', 'pc-wardrobe');
-    const hint = node('p', 'pc-hint', 'Образы добавляются сюда после описания. Коллекция хранится только в этом браузере.');
+    const hint = node('p', 'pc-hint', 'Образы добавляются после описания, если включено «Добавлять в шкаф». Коллекция хранится только в этом браузере.');
     const message = node('p', 'pc-hint');
     message.setAttribute('role', 'status');
     const list = node('div', 'pc-wardrobe-list');
@@ -153,7 +154,54 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
                 image.src = url;
                 const content = node('div', 'pc-wardrobe-content');
                 const badge = node('span', 'pc-wardrobe-badge', 'Образ');
+                const tags = node('div', 'pc-wardrobe-tags');
+                const renderTags = () => {
+                    tags.replaceChildren(...(item.tags || []).map(tag => node('span', 'pc-wardrobe-badge', tag)));
+                    tags.hidden = !tags.childElementCount;
+                };
+                renderTags();
                 const description = node('p', 'pc-wardrobe-description', item.description);
+                const editorPanel = node('div', 'pc-card-tag-editor');
+                editorPanel.hidden = true;
+                let editor;
+                const edit = button('Теги', () => {
+                    if (!editor) {
+                        editor = createTagEditor({ node, button }, item.tags || []);
+                        const save = button('Сохранить теги', async () => {
+                            const values = editor.getTags();
+                            save.disabled = true;
+                            editor.setDisabled(true);
+                            try {
+                                await transaction('readwrite', store => {
+                                    const request = store.get(item.id);
+                                    request.onsuccess = () => {
+                                        // A card deleted in another tab must not be resurrected.
+                                        if (request.result) store.put({ ...request.result, tags: values });
+                                    };
+                                });
+                                if (!visible || current !== version) return;
+                                item.tags = values;
+                                renderTags();
+                                editorPanel.hidden = true;
+                                edit.setAttribute('aria-expanded', 'false');
+                                message.textContent = 'Теги сохранены.';
+                                message.classList.remove('pc-error');
+                                edit.focus({ preventScroll: true });
+                            } catch (error) {
+                                if (!visible || current !== version) return;
+                                message.textContent = `Не удалось сохранить теги: ${errorMessage(error)}`;
+                                message.classList.add('pc-error');
+                            } finally {
+                                save.disabled = false;
+                                editor.setDisabled(false);
+                            }
+                        });
+                        editorPanel.append(editor.element, save);
+                    }
+                    editorPanel.hidden = !editorPanel.hidden;
+                    edit.setAttribute('aria-expanded', String(!editorPanel.hidden));
+                });
+                edit.setAttribute('aria-expanded', 'false');
                 const actions = node('div', 'pc-actions');
                 const copy = button('Копировать', async () => {
                     const copied = await copyText(item.description);
@@ -173,9 +221,10 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
                         message.classList.add('pc-error');
                     }
                 });
-                actions.append(copy, remove);
-                content.append(badge, description, actions);
+                actions.append(copy, edit, remove);
+                content.append(badge, tags, description, actions);
                 card.append(image, content);
+                card.append(editorPanel);
                 list.append(card);
             }
         } catch (error) {

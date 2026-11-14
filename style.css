@@ -139,6 +139,11 @@
 .pc-dialog .pc-tag-presets .pc-button { min-height: 44px; padding: 6px 10px; font-size: 12px; border-radius: 20px; }
 .pc-dialog .pc-tag-presets [aria-pressed="true"] { border-color: var(--pc-accent); background: color-mix(in srgb, var(--pc-accent) 12%, var(--pc-bg)); }
 .pc-dialog .pc-wardrobe-tags .pc-wardrobe-badge { max-width: 100%; overflow-wrap: anywhere; }
+.pc-dialog .pc-wardrobe-controls { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pc-dialog .pc-wardrobe-scopes { display: flex; flex-wrap: wrap; gap: 6px; }
+.pc-dialog .pc-wardrobe-scopes [aria-pressed="true"] { border-color: var(--pc-accent); background: color-mix(in srgb, var(--pc-accent) 12%, var(--pc-bg)); }
+.pc-dialog .pc-wardrobe-filters { max-height: 180px; overflow-y: auto; }
+.pc-dialog .pc-wardrobe-filters .pc-button { max-width: 100%; overflow-wrap: anywhere; }
 .pc-dialog .pc-footer { padding: 10px 16px 16px; border-top: 1px solid var(--pc-line); flex-shrink: 0; }
 .pc-dialog .pc-status { font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; opacity: 0.75; max-height: 4.2em; overflow-y: auto; margin-bottom: 10px; }
 .pc-dialog .pc-status:empty { display: none; }

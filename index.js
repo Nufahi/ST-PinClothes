@@ -2,6 +2,7 @@ import { describe, errorMessage, getProfiles, SYSTEM_PROMPT, ACCESSORIES_PROMPT 
 import { createCropEditor } from './crop.js';
 import { createWardrobe, saveOutfit } from './wardrobe.js';
 import { createTagEditor } from './tags.js';
+import { wardrobeChat } from './chat-context.js';
 
 const KEY = 'pinClothes';
 const context = () => SillyTavern.getContext();
@@ -10,6 +11,7 @@ let image = '';
 let fullImage = '';
 let cropRect;
 let originalFile;
+let imageChat = null;
 let imageVersion = 0;
 let loadingImage = false;
 let activeRequest;
@@ -182,6 +184,7 @@ async function prepareImage(file) {
 
 async function loadImage(file) {
     if (!file || activeRequest || ui.view === 'crop') return;
+    const chat = wardrobeChat(context());
     const version = ++imageVersion;
     loadingImage = true;
     status('Подготавливаю изображение…');
@@ -193,6 +196,7 @@ async function loadImage(file) {
         fullImage = prepared;
         cropRect = undefined;
         originalFile = file;
+        imageChat = chat;
         ui.saveToWardrobe.checked = true;
         ui.tags.setTags([]);
         ui.preview.src = image;
@@ -220,6 +224,7 @@ function clearImage() {
     fullImage = '';
     cropRect = undefined;
     originalFile = undefined;
+    imageChat = null;
     ui.preview.removeAttribute('src');
     ui.preview.hidden = true;
     ui.placeholder.hidden = false;
@@ -274,7 +279,7 @@ async function generate() {
         let saved = false;
         if (ui.saveToWardrobe.checked) {
             try {
-                await saveOutfit(image, result, originalFile?.name || 'Изображение из буфера', ui.tags.getTags());
+                await saveOutfit(image, result, originalFile?.name || 'Изображение из буфера', ui.tags.getTags(), imageChat);
                 saved = true;
             } catch (error) {
                 status(`Описание готово, но не сохранено в шкаф: ${errorMessage(error)}`, true);
@@ -417,7 +422,7 @@ function createDialog() {
         ui.panels[name] = panel;
         ui.body.append(panel);
     }
-    ui.wardrobe = createWardrobe({ node, button, iconButton, copyText });
+    ui.wardrobe = createWardrobe({ node, button, iconButton, copyText, getChat: () => wardrobeChat(context()) });
     ui.panels.wardrobe.append(ui.wardrobe.element);
     const outfit = ui.panels.outfit;
     const pinterest = node('div', 'pc-search');
@@ -677,3 +682,6 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 else init();
 const ctx = context();
 if (ctx.eventSource && ctx.eventTypes?.APP_READY) ctx.eventSource.on(ctx.eventTypes.APP_READY, init);
+if (ctx.eventSource && ctx.eventTypes?.CHAT_CHANGED) ctx.eventSource.on(ctx.eventTypes.CHAT_CHANGED, () => {
+    if (dialog?.open && ui.view === 'wardrobe') ui.wardrobe.open();
+});

@@ -32,7 +32,7 @@ const revokeURL = URL.revokeObjectURL.bind(URL);
 URL.createObjectURL = blob => { const url = createURL(blob); previewURLs.add(url); return url; };
 URL.revokeObjectURL = url => { previewURLs.delete(url); revokeURL(url); };
 window.readWardrobe = () => new Promise((resolve, reject) => {
-    const request = openDatabase('pinClothes-wardrobe', 1);
+    const request = openDatabase('pinClothes-wardrobe');
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
         const db = request.result;
@@ -51,8 +51,8 @@ window.ctx = {
         ]
     } },
     saveSettingsDebounced() { window.saved++; localStorage.setItem('pinClothes', JSON.stringify(ctx.extensionSettings.pinClothes)); },
-    eventTypes: { APP_READY: 'ready' },
-    eventSource: { on(_event, callback) { window.appReady = callback; } },
+    eventTypes: { APP_READY: 'ready', CHAT_CHANGED: 'chat_changed' },
+    eventSource: { on(event, callback) { if (event === 'ready') window.appReady = callback; else window.chatChanged = callback; } },
     ConnectionManagerRequestService: {
         getSupportedProfiles() { return ctx.extensionSettings.connectionManager.profiles; },
         async sendRequest(id, messages, tokens, options) {
@@ -100,7 +100,7 @@ try:
         page.locator('#pinclothes-wand').click()
         assert page.locator('#pinclothes-wand > span:last-child').inner_text() == 'Pinterest'
         assert page.locator('dialog').evaluate('(d) => d.open')
-        assert page.locator('select option').count() == 3  # placeholder + two CC profiles
+        assert page.get_by_label('Профиль подключения', exact=True).locator('option').count() == 3  # placeholder + two CC profiles
         assert page.get_by_role('button', name='Описать одежду', exact=True).is_disabled()
         # Opening never summons the keyboard. Enable the shortcut from inside the dialog.
         assert page.evaluate('document.activeElement.tagName') == 'BUTTON'
@@ -176,7 +176,7 @@ try:
         assert page.evaluate('navigator.clipboard.readText()') == 'clothes: brown halter top, light-wash jeans'
         page.locator('#pinclothes-sendbar').tap()
         page.get_by_role('tab', name='Образ', exact=True).click()
-        assert page.locator('select').input_value() == 'vision'
+        assert page.get_by_label('Профиль подключения', exact=True).input_value() == 'vision'
 
         # Opting out leaves storage untouched but still returns the description.
         page.get_by_label('Добавлять в шкаф', exact=True).uncheck()
@@ -367,12 +367,13 @@ try:
         page.evaluate('''async () => {
             const [sample] = await readWardrobe();
             await new Promise((resolve, reject) => {
-                const request = indexedDB.open('pinClothes-wardrobe', 1);
+                const request = indexedDB.open('pinClothes-wardrobe');
                 request.onsuccess = () => {
-                    const db = request.result; const tx = db.transaction('items', 'readwrite');
+                    const db = request.result; const tx = db.transaction(['items', 'metadata'], 'readwrite');
                     for (let n = 0; n < 22; n++) {
                         const { id, ...item } = sample;
-                        tx.objectStore('items').add({ ...item, description: `clothes: item ${n}` });
+                        const added = tx.objectStore('items').add({ ...item, description: `clothes: item ${n}` });
+                        added.onsuccess = () => tx.objectStore('metadata').put({ id: added.result, tags: item.tags || [], chatKey: null });
                     }
                     tx.oncomplete = () => { db.close(); resolve(); };
                     tx.onabort = () => { db.close(); reject(tx.error); };
@@ -411,6 +412,122 @@ try:
         page.evaluate('() => { indexedDB.open = openDatabase; }')
         page.get_by_role('button', name='Повторить загрузку', exact=True).click()
         page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+
+        # Bind to the chat at upload time, even if the active chat changes before generation.
+        page.get_by_role('tab', name='Образ', exact=True).click()
+        page.evaluate('''() => {
+            ctx.characters = [{ avatar: 'alice.png', name: 'Alice' }, { avatar: 'bob.png', name: 'Bob' }];
+            ctx.characterId = 0; ctx.chatId = 'shared-name'; chatChanged();
+        }''')
+        page.locator('.pc-file').set_input_files({'name': 'alice.png', 'mimeType': 'image/png', 'buffer': png})
+        page.get_by_role('button', name='Отмена', exact=True).click()
+        page.locator('.pc-tag-details > summary').click()
+        page.get_by_role('button', name='Женское', exact=True).click()
+        page.get_by_label('Свои теги через запятую').fill('Для Алисы')
+        page.evaluate('() => { ctx.characterId = 1; chatChanged(); }')
+        page.get_by_role('button', name='Описать одежду', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-status").textContent.includes("образ добавлен")')
+        alice_key = '["character","alice.png","shared-name"]'
+        assert page.evaluate('readWardrobe().then(items => items.at(-1).chat.key)') == alice_key
+        page.get_by_role('tab', name='Шкаф', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-wardrobe > [role=status]").textContent.includes("В этом чате пока нет")')
+        assert page.get_by_role('button', name='Этот чат', exact=True).get_attribute('aria-pressed') == 'true'
+        page.get_by_role('button', name='Все образы', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+        filters = page.get_by_role('group', name='Фильтр по тегам', exact=True)
+        filters.get_by_role('button', name='Для Алисы', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
+        assert 'Для Алисы' in page.locator('.pc-wardrobe-tags').inner_text()
+        filters.get_by_role('button', name='Мужское', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-wardrobe > [role=status]").textContent.includes("Нет образов с выбранными")')
+        filters.get_by_role('button', name='Все теги', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+
+        # Changing chats updates an open wardrobe; another RP with Alice is a separate collection.
+        page.evaluate('() => { ctx.characterId = 0; chatChanged(); }')
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
+        page.evaluate('() => { ctx.chatId = "another-rp"; chatChanged(); }')
+        page.wait_for_function('document.querySelector(".pc-wardrobe > [role=status]").textContent.includes("В этом чате пока нет")')
+        page.evaluate('() => { ctx.chatId = "shared-name"; chatChanged(); }')
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
+
+        # Tags from later pages are available immediately, and matching pagination stays bounded.
+        page.evaluate('''async () => {
+            const sample = (await readWardrobe()).at(-1);
+            await new Promise((resolve, reject) => {
+                const request = indexedDB.open('pinClothes-wardrobe');
+                request.onsuccess = () => {
+                    const db = request.result;
+                    const tx = db.transaction(['items', 'metadata'], 'readwrite');
+                    for (let n = 0; n < 13; n++) {
+                        const { id, ...item } = sample;
+                        const tags = n === 0 ? ['Редкий'] : ['Женское', 'Для Алисы'];
+                        const added = tx.objectStore('items').add({ ...item, tags, description: `clothes: Alice ${n}` });
+                        added.onsuccess = () => tx.objectStore('metadata').put({ id: added.result, tags, chatKey: item.chat.key });
+                    }
+                    tx.oncomplete = () => { db.close(); resolve(); };
+                    tx.onabort = () => { db.close(); reject(tx.error); };
+                };
+            });
+            chatChanged();
+        }''')
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+        filters.get_by_role('button', name='Редкий', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
+        assert page.locator('.pc-wardrobe-description').inner_text() == 'clothes: Alice 0'
+        filters.get_by_role('button', name='Все теги', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+        filters.get_by_role('button', name='Для Алисы', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-wardrobe-list").getAttribute("aria-busy") === "false"')
+        page.get_by_role('button', name='Дальше', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
+        assert page.evaluate('previewURLs.size') == 1
+        page.get_by_label('Порядок образов', exact=True).select_option('next')
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+        assert page.locator('.pc-wardrobe-description').first.inner_text().startswith('clothes: brown')
+        page.get_by_role('button', name='Дальше', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
+        assert page.locator('.pc-wardrobe-description').inner_text() == 'clothes: Alice 12'
+
+        # Tag edits immediately update the filter results and the list of custom filters.
+        page.locator('.pc-wardrobe-card').get_by_role('button', name='Теги', exact=True).click()
+        page.locator('.pc-card-tag-editor').get_by_label('Свои теги через запятую').fill('Новый тег')
+        page.get_by_role('button', name='Сохранить теги', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+        assert filters.get_by_role('button', name='Новый тег', exact=True).count() == 1
+        assert page.get_by_role('button', name='Дальше', exact=True).is_disabled()
+        page.evaluate('() => { ctx.characterId = undefined; ctx.chatId = undefined; chatChanged(); }')
+        page.wait_for_function('document.querySelector(".pc-wardrobe-scopes button").getAttribute("aria-pressed") === "true"')
+        assert page.get_by_role('button', name='Этот чат', exact=True).count() == 0
+
+        # Group context keys cannot collide with character chats.
+        assert page.evaluate('''async () => {
+            const { wardrobeChat } = await import('/chat-context.js');
+            return wardrobeChat({ groupId: 'alice.png', chatId: 'shared-name', groups: [] }).key;
+        }''') == '["group","alice.png","shared-name"]'
+
+        # Upgrade a real v1 database without losing old images or custom tags.
+        legacy_context = browser.new_context()
+        legacy = legacy_context.new_page()
+        legacy.goto(f'http://127.0.0.1:{server.server_port}/')
+        legacy.evaluate('''() => new Promise((resolve, reject) => {
+            const request = indexedDB.open('pinClothes-wardrobe', 1);
+            request.onupgradeneeded = () => request.result.createObjectStore('items', { keyPath: 'id', autoIncrement: true });
+            request.onsuccess = () => {
+                const db = request.result; const tx = db.transaction('items', 'readwrite');
+                tx.objectStore('items').add({ preview: new Blob(['legacy']), description: 'clothes: legacy', tags: ['Старый тег'] });
+                tx.objectStore('items').add({ preview: new Blob(['legacy']), description: 'clothes: no tags' });
+                tx.oncomplete = () => { db.close(); resolve(); };
+                tx.onabort = () => { db.close(); reject(tx.error); };
+            };
+        })''')
+        legacy.locator('#pinclothes-wand').click()
+        legacy.get_by_role('tab', name='Шкаф', exact=True).click()
+        legacy.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 2')
+        legacy.get_by_role('group', name='Фильтр по тегам').get_by_role('button', name='Старый тег', exact=True).click()
+        legacy.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
+        assert legacy.locator('.pc-wardrobe-description').inner_text() == 'clothes: legacy'
+        legacy_context.close()
         assert not errors, errors
         browser.close()
         print('PASS: touch crop, crop pixels in request and wardrobe, accessory prompts, profiles, draft insertion, errors, cancellation, responsive layout, persisted settings, WebP collection, pagination, deletion, memory cleanup, storage failures')

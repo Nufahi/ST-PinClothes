@@ -3,14 +3,29 @@ import { createTagEditor, normalizeTags } from './tags.js';
 
 const DATABASE = 'pinClothes-wardrobe';
 const STORE = 'items';
+const METADATA = 'metadata';
 const PAGE_SIZE = 12;
+
+function metadata(item) {
+    return { id: item.id, tags: normalizeTags(item.tags), chatKey: item.chat?.key || null };
+}
 
 function openDatabase() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DATABASE, 1);
+        const request = indexedDB.open(DATABASE, 2);
         let blocked = false;
         request.onupgradeneeded = () => {
-            request.result.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+            const db = request.result;
+            const store = db.objectStoreNames.contains(STORE)
+                ? request.transaction.objectStore(STORE)
+                : db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+            const meta = db.createObjectStore(METADATA, { keyPath: 'id' });
+            const cursor = store.openCursor();
+            cursor.onsuccess = () => {
+                if (!cursor.result) return;
+                meta.put(metadata(cursor.result.value));
+                cursor.result.continue();
+            };
         };
         request.onerror = () => reject(request.error);
         request.onblocked = () => {
@@ -19,7 +34,10 @@ function openDatabase() {
         };
         request.onsuccess = () => {
             if (blocked) request.result.close();
-            else resolve(request.result);
+            else {
+                request.result.onversionchange = () => request.result.close();
+                resolve(request.result);
+            }
         };
     });
 }
@@ -28,12 +46,12 @@ async function transaction(mode, run) {
     const db = await openDatabase();
     try {
         return await new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE, mode);
+            const tx = db.transaction([STORE, METADATA], mode);
             let result;
             tx.oncomplete = () => resolve(result);
             tx.onabort = () => reject(tx.error || new Error('Не удалось сохранить изменения в шкафу.'));
             tx.onerror = () => {}; // The abort event reports transaction failures.
-            run(tx.objectStore(STORE), value => { result = value; });
+            run(tx.objectStore(STORE), value => { result = value; }, tx.objectStore(METADATA));
         });
     } finally {
         db.close();
@@ -59,32 +77,50 @@ async function thumbnail(source) {
     }
 }
 
-export async function saveOutfit(source, description, name, tags = []) {
+export async function saveOutfit(source, description, name, tags = [], chat = null) {
     const preview = await thumbnail(source);
-    return transaction('readwrite', (store, done) => {
-        const request = store.add({ preview, description, name, tags: normalizeTags(tags), createdAt: Date.now() });
-        request.onsuccess = () => done(request.result);
+    return transaction('readwrite', (store, done, meta) => {
+        const item = { preview, description, name, tags: normalizeTags(tags), chat, createdAt: Date.now() };
+        const request = store.add(item);
+        request.onsuccess = () => {
+            meta.put(metadata({ ...item, id: request.result }));
+            done(request.result);
+        };
     });
 }
 
-function readPage(before) {
-    return transaction('readonly', (store, done) => {
-        const items = [];
-        const range = before == null ? null : IDBKeyRange.upperBound(before, true);
-        const request = store.openCursor(range, 'prev');
+function readPage(before, chatKey, selectedTags, direction) {
+    return transaction('readonly', (store, done, meta) => {
+        const ids = [];
+        const tags = new Map();
+        let more = false;
+        const request = meta.openCursor(null, direction);
         request.onsuccess = () => {
             const cursor = request.result;
-            if (!cursor || items.length === PAGE_SIZE) {
-                done({ items, more: Boolean(cursor) });
+            if (!cursor) {
+                const items = new Array(ids.length);
+                ids.forEach((id, index) => {
+                    store.get(id).onsuccess = event => { items[index] = event.target.result; };
+                });
+                done({ items, more, tags: [...tags.values()] });
                 return;
             }
-            items.push(cursor.value);
+            const item = cursor.value;
+            if (chatKey === null || item.chatKey === chatKey) {
+                const keys = item.tags.map(tag => tag.toLocaleLowerCase('ru'));
+                item.tags.forEach((tag, index) => { if (!tags.has(keys[index])) tags.set(keys[index], tag); });
+                const afterBoundary = before == null || (direction === 'prev' ? item.id < before : item.id > before);
+                if (afterBoundary && selectedTags.every(tag => keys.includes(tag))) {
+                    if (ids.length < PAGE_SIZE) ids.push(item.id);
+                    else more = true;
+                }
+            }
             cursor.continue();
         };
     });
 }
 
-export function createWardrobe({ node, button, iconButton, copyText }) {
+export function createWardrobe({ node, button, iconButton, copyText, getChat }) {
     const element = node('div', 'pc-wardrobe');
     const hint = node('p', 'pc-hint', 'Образы добавляются после описания, если включено «Добавлять в шкаф». Коллекция хранится только в этом браузере.');
     const message = node('p', 'pc-hint');
@@ -97,6 +133,63 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
     let boundaries = [undefined];
     let nextBoundary;
     let urls = [];
+    let chat = null;
+    let local = false;
+    const selectedTags = new Map();
+    const controls = node('div', 'pc-wardrobe-controls');
+    const scopes = node('div', 'pc-wardrobe-scopes');
+    scopes.setAttribute('role', 'group');
+    scopes.setAttribute('aria-label', 'Коллекция');
+    const all = button('Все образы', () => changeScope(false));
+    const currentChat = button('Этот чат', () => changeScope(true));
+    scopes.append(all, currentChat);
+    const scopeLabel = node('p', 'pc-hint');
+    const sortLabel = node('label', 'pc-field');
+    const sort = node('select', 'pc-input');
+    sort.setAttribute('aria-label', 'Порядок образов');
+    sort.append(new Option('Сначала новые', 'prev'), new Option('Сначала старые', 'next'));
+    sort.addEventListener('change', () => resetPage());
+    sortLabel.append(node('span', '', 'Порядок образов'), sort);
+    const filters = node('div', 'pc-tag-presets pc-wardrobe-filters');
+    filters.setAttribute('role', 'group');
+    filters.setAttribute('aria-label', 'Фильтр по тегам');
+    const clearTags = button('Все теги', () => {
+        selectedTags.clear();
+        resetPage();
+    });
+    const filterHint = node('p', 'pc-hint', 'Выбери теги: будут показаны образы со всеми выбранными тегами.');
+    controls.append(scopes, scopeLabel, sortLabel, filterHint, filters);
+
+    function resetPage() {
+        boundaries = [undefined];
+        void load();
+    }
+
+    function changeScope(value) {
+        local = value && Boolean(chat);
+        selectedTags.clear();
+        all.setAttribute('aria-pressed', String(!local));
+        currentChat.setAttribute('aria-pressed', String(local));
+        currentChat.hidden = !chat;
+        scopeLabel.textContent = local ? `Чат: ${chat.name}. Только образы, загруженные в этом чате.` : 'Все сохранённые образы из всех чатов и вне чата.';
+        resetPage();
+    }
+
+    function renderFilters(tags) {
+        const available = new Map(tags.map(tag => [tag.toLocaleLowerCase('ru'), tag]));
+        for (const [key, tag] of selectedTags) available.set(key, tag);
+        clearTags.setAttribute('aria-pressed', String(!selectedTags.size));
+        filters.replaceChildren(clearTags);
+        for (const [key, tag] of [...available].sort((a, b) => a[1].localeCompare(b[1], 'ru'))) {
+            const filter = button(tag, () => {
+                if (selectedTags.has(key)) selectedTags.delete(key);
+                else selectedTags.set(key, tag);
+                resetPage();
+            });
+            filter.setAttribute('aria-pressed', String(selectedTags.has(key)));
+            filters.append(filter);
+        }
+    }
 
     const previous = button('Назад', () => {
         if (boundaries.length < 2) return;
@@ -111,7 +204,7 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
     const retry = button('Повторить загрузку', () => void load());
     retry.hidden = true;
     navigation.append(previous, pageLabel, next);
-    element.append(hint, message, retry, list, navigation);
+    element.append(controls, hint, message, retry, list, navigation);
 
     function release() {
         list.replaceChildren();
@@ -130,14 +223,15 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
         message.textContent = 'Открываю шкаф…';
         list.setAttribute('aria-busy', 'true');
         try {
-            const { items, more } = await readPage(boundaries.at(-1));
+            const { items, more, tags } = await readPage(boundaries.at(-1), local ? chat.key : null, [...selectedTags.keys()], sort.value);
             if (!visible || current !== version) return;
+            renderFilters(tags);
             if (!items.length && boundaries.length > 1) {
                 boundaries.pop();
                 void load();
                 return;
             }
-            message.textContent = items.length ? '' : 'Шкаф пока пуст. Добавь фото во вкладке «Образ» и получи описание.';
+            message.textContent = items.length ? '' : selectedTags.size ? 'Нет образов с выбранными тегами.' : local ? 'В этом чате пока нет образов. Все сохранённые доступны в «Все образы».' : 'Шкаф пока пуст. Добавь фото во вкладке «Образ» и получи описание.';
             pageLabel.textContent = `Стр. ${boundaries.length}`;
             navigation.hidden = !items.length;
             previous.disabled = boundaries.length === 1;
@@ -172,11 +266,15 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
                             save.disabled = true;
                             editor.setDisabled(true);
                             try {
-                                await transaction('readwrite', store => {
+                                await transaction('readwrite', (store, done, meta) => {
                                     const request = store.get(item.id);
                                     request.onsuccess = () => {
                                         // A card deleted in another tab must not be resurrected.
-                                        if (request.result) store.put({ ...request.result, tags: values });
+                                        if (request.result) {
+                                            const updated = { ...request.result, tags: values };
+                                            store.put(updated);
+                                            meta.put(metadata(updated));
+                                        }
                                     };
                                 });
                                 if (!visible || current !== version) return;
@@ -187,6 +285,8 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
                                 message.textContent = 'Теги сохранены.';
                                 message.classList.remove('pc-error');
                                 edit.focus({ preventScroll: true });
+                                await load();
+                                if (visible && current + 1 === version) message.textContent = 'Теги сохранены.';
                             } catch (error) {
                                 if (!visible || current !== version) return;
                                 message.textContent = `Не удалось сохранить теги: ${errorMessage(error)}`;
@@ -212,7 +312,10 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
                 const remove = iconButton('Удалить образ', 'trash', async () => {
                     remove.disabled = true;
                     try {
-                        await transaction('readwrite', store => store.delete(item.id));
+                        await transaction('readwrite', (store, done, meta) => {
+                            store.delete(item.id);
+                            meta.delete(item.id);
+                        });
                         if (visible && current === version) void load();
                     } catch (error) {
                         if (!visible || current !== version) return;
@@ -242,8 +345,8 @@ export function createWardrobe({ node, button, iconButton, copyText }) {
         element,
         open() {
             visible = true;
-            boundaries = [undefined];
-            void load();
+            chat = getChat();
+            changeScope(Boolean(chat));
         },
         close() {
             visible = false;

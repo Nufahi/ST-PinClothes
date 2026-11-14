@@ -1,5 +1,6 @@
 import { describe, errorMessage, getProfiles, SYSTEM_PROMPT, ACCESSORIES_PROMPT } from './api.js';
 import { createCropEditor } from './crop.js';
+import { createWardrobe, saveOutfit } from './wardrobe.js';
 
 const KEY = 'pinClothes';
 const context = () => SillyTavern.getContext();
@@ -75,6 +76,8 @@ function iconButton(label, name, action) {
 }
 
 function showView(view) {
+    if (ui.view === 'wardrobe' && view !== 'wardrobe') ui.wardrobe.close();
+    const openWardrobe = view === 'wardrobe' && ui.view !== 'wardrobe';
     ui.view = view;
     for (const [name, panel] of Object.entries(ui.panels)) panel.hidden = name !== view;
     for (const [name, tab] of Object.entries(ui.tabs)) {
@@ -86,6 +89,7 @@ function showView(view) {
     ui.tabBar.hidden = view === 'crop';
     ui.body.scrollTop = 0;
     syncButtons();
+    if (openWardrobe && dialog.open) ui.wardrobe.open();
 }
 
 function field(label, input) {
@@ -259,10 +263,18 @@ async function generate() {
             maxTokens: Number(ui.tokens.value),
             signal: controller.signal,
         });
+        clearTimeout(timeout);
+        let saved = false;
+        try {
+            await saveOutfit(image, result, originalFile?.name || 'Изображение из буфера');
+            saved = true;
+        } catch (error) {
+            status(`Описание готово, но не сохранено в шкаф: ${errorMessage(error)}`, true);
+        }
         ui.result.value = result;
         showView('result');
         if (dialog.open) ui.tabs.result.focus({ preventScroll: true });
-        status('Готово — текст можно отредактировать.');
+        if (saved) status('Готово — образ добавлен в шкаф. Здесь текст можно отредактировать.');
     } catch (error) {
         const reason = controller.signal.reason;
         if (controller.signal.aborted && reason?.name !== 'TimeoutError') status('Запрос отменён.');
@@ -363,7 +375,8 @@ function createDialog() {
     ui.tabBar = tabs;
     tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', 'Pinterest');
-    for (const [name, label] of [['outfit', 'Образ'], ['result', 'Результат']]) {
+    const views = [['outfit', 'Образ'], ['result', 'Результат'], ['wardrobe', 'Шкаф']];
+    for (const [name, label] of views) {
         const tab = button(label, () => showView(name));
         tab.id = `pc-tab-${name}`;
         tab.setAttribute('role', 'tab');
@@ -371,7 +384,10 @@ function createDialog() {
         tab.addEventListener('keydown', event => {
             if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
                 event.preventDefault();
-                const next = event.key === 'Home' ? 'outfit' : event.key === 'End' ? 'result' : name === 'outfit' ? 'result' : 'outfit';
+                const index = views.findIndex(([view]) => view === name);
+                const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? views.length - 1
+                    : (index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length;
+                const next = views[nextIndex][0];
                 showView(next);
                 ui.tabs[next].focus();
             }
@@ -380,7 +396,7 @@ function createDialog() {
         tabs.append(tab);
     }
     ui.body = node('div', 'pc-body');
-    for (const name of ['outfit', 'result', 'settings']) {
+    for (const name of ['outfit', 'result', 'wardrobe', 'settings']) {
         const panel = node('section', 'pc-panel');
         panel.id = `pc-panel-${name}`;
         if (name !== 'settings') {
@@ -390,6 +406,8 @@ function createDialog() {
         ui.panels[name] = panel;
         ui.body.append(panel);
     }
+    ui.wardrobe = createWardrobe({ node, button, iconButton, copyText });
+    ui.panels.wardrobe.append(ui.wardrobe.element);
     const outfit = ui.panels.outfit;
     const pinterest = node('div', 'pc-search');
     ui.search = node('input', 'pc-input');
@@ -542,6 +560,7 @@ function createDialog() {
     });
     dialog.addEventListener('close', () => {
         activeRequest?.abort();
+        ui.wardrobe.close();
         if (ui.view === 'crop') showView('outfit');
         returnFocus?.focus();
     });
@@ -566,6 +585,7 @@ function open() {
     returnFocus = document.activeElement;
     if (!activeRequest) refreshProfiles();
     dialog.showModal();
+    if (ui.view === 'wardrobe') ui.wardrobe.open();
 }
 
 function syncSendbar() {

@@ -40,7 +40,7 @@
 .pc-dialog .pc-brand .pc-pinterest-icon { width: 26px; height: 26px; }
 .pc-dialog .pc-subtitle { font-size: 11px; opacity: 0.6; margin-top: 2px; }
 .pc-dialog .pc-icon { width: 21px; height: 21px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.pc-dialog .pc-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 16px 4px; padding: 4px; border-radius: 16px; background: var(--pc-soft); flex-shrink: 0; }
+.pc-dialog .pc-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0 16px 4px; padding: 4px; border-radius: 16px; background: var(--pc-soft); flex-shrink: 0; }
 .pc-dialog .pc-tabs .pc-button { min-height: 44px; background: transparent; border: 0; color: inherit; opacity: 0.55; font-size: 14px; }
 .pc-dialog .pc-tabs [aria-selected="true"] { background: var(--pc-bg); box-shadow: 0 2px 8px #0002; opacity: 1; }
 .pc-dialog .pc-body { padding: 16px; overflow-y: auto; min-height: 0; flex: 1; overscroll-behavior: contain; scrollbar-width: thin; }
@@ -120,6 +120,16 @@
 .pc-dialog .pc-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 30px 18px; }
 .pc-dialog .pc-empty > .pc-icon { width: 40px; height: 40px; color: var(--pc-accent); }
 .pc-dialog .pc-result { min-height: 210px; line-height: 1.7; }
+.pc-dialog .pc-wardrobe, .pc-dialog .pc-wardrobe-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pc-dialog .pc-wardrobe-card { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 12px; border: 1px solid var(--pc-line); border-radius: 16px; background: var(--pc-soft); }
+.pc-dialog .pc-wardrobe-image { display: block; width: 88px; height: 116px; object-fit: contain; border-radius: 10px; background: #0002; }
+.pc-dialog .pc-wardrobe-content { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.pc-dialog .pc-wardrobe-badge { padding: 3px 8px; border-radius: 20px; color: var(--pc-accent); background: color-mix(in srgb, var(--pc-accent) 12%, transparent); font-size: 11px; font-weight: 600; }
+.pc-dialog .pc-wardrobe-description { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
+.pc-dialog .pc-wardrobe-content .pc-actions { flex-wrap: wrap; gap: 4px; }
+.pc-dialog .pc-wardrobe-content .pc-button { padding-inline: 10px; font-size: 12px; }
+.pc-dialog .pc-wardrobe-navigation { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pc-dialog .pc-wardrobe > [role="status"]:empty { display: none; }
 .pc-dialog .pc-footer { padding: 10px 16px 16px; border-top: 1px solid var(--pc-line); flex-shrink: 0; }
 .pc-dialog .pc-status { font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; opacity: 0.75; max-height: 4.2em; overflow-y: auto; margin-bottom: 10px; }
 .pc-dialog .pc-status:empty { display: none; }

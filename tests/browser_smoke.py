@@ -23,6 +23,25 @@ FIXTURE = b'''<!doctype html><html><head><meta charset="utf-8">
 window.calls = [];
 window.mode = 'success';
 window.saved = 0;
+window.wardrobeOpens = 0;
+const openDatabase = indexedDB.open.bind(indexedDB);
+indexedDB.open = (...args) => { window.wardrobeOpens++; return openDatabase(...args); };
+window.previewURLs = new Set();
+const createURL = URL.createObjectURL.bind(URL);
+const revokeURL = URL.revokeObjectURL.bind(URL);
+URL.createObjectURL = blob => { const url = createURL(blob); previewURLs.add(url); return url; };
+URL.revokeObjectURL = url => { previewURLs.delete(url); revokeURL(url); };
+window.readWardrobe = () => new Promise((resolve, reject) => {
+    const request = openDatabase('pinClothes-wardrobe', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('items');
+        const items = tx.objectStore('items').getAll();
+        tx.oncomplete = () => { db.close(); resolve(items.result); };
+        tx.onabort = () => { db.close(); reject(tx.error); };
+    };
+});
 window.ctx = {
     extensionSettings: { pinClothes: JSON.parse(localStorage.getItem('pinClothes') || 'null'), disabledExtensions: [], connectionManager: {
         selectedProfile: 'main', profiles: [
@@ -85,6 +104,7 @@ try:
         assert page.get_by_role('button', name='Описать одежду', exact=True).is_disabled()
         # Opening never summons the keyboard. Enable the shortcut from inside the dialog.
         assert page.evaluate('document.activeElement.tagName') == 'BUTTON'
+        assert page.evaluate('wardrobeOpens') == 0
         page.get_by_role('button', name='Настройки Pinterest', exact=True).click()
         page.locator('dialog').get_by_label('Иконка в строке ввода').check()
         assert page.locator('#leftSendForm #pinclothes-sendbar').count() == 1
@@ -120,6 +140,19 @@ try:
         assert 'Existing draft' not in str(request)
         assert page.evaluate('ctx.extensionSettings.connectionManager.selectedProfile') == 'main'
         assert 'Hidden reasoning' not in page.locator('.pc-result').input_value()
+
+        # The collection stores compact binary previews, and releases them when hidden.
+        assert page.evaluate('readWardrobe().then(items => items.length)') == 1
+        assert page.evaluate('readWardrobe().then(items => items[0].preview.type)') == 'image/webp'
+        page.get_by_role('tab', name='Результат', exact=True).press('ArrowRight')
+        page.locator('.pc-wardrobe-card').wait_for()
+        assert page.locator('.pc-wardrobe-card').count() == 1
+        page.locator('.pc-wardrobe-card').get_by_role('button', name='Копировать', exact=True).click()
+        page.wait_for_function('navigator.clipboard.readText().then(text => text.startsWith("clothes:"))')
+        assert page.evaluate('previewURLs.size') == 1
+        page.get_by_role('tab', name='Шкаф', exact=True).press('ArrowLeft')
+        assert page.locator('.pc-wardrobe-card').count() == 0
+        assert page.evaluate('previewURLs.size') == 0
 
         page.get_by_role('button', name='Вставить и скопировать').click()
         page.wait_for_function('!document.querySelector("dialog").open')
@@ -182,6 +215,16 @@ try:
         assert 'visible clothing together with visible footwear and wearable accessories' in request['messages'][0]['content']
         assert 'DEFAULT SCOPE' not in request['messages'][0]['content']
         assert 'без сумки' in request['messages'][1]['content'][0]['text']
+        saved_crop = page.evaluate('''async () => {
+            const items = await readWardrobe();
+            const bitmap = await createImageBitmap(items.at(-1).preview);
+            const c = document.createElement('canvas'); c.width = bitmap.width; c.height = bitmap.height;
+            const p = c.getContext('2d'); p.drawImage(bitmap, 0, 0);
+            const result = { w: bitmap.width, h: bitmap.height, rgb: Array.from(p.getImageData(20, 20, 1, 1).data) };
+            bitmap.close(); return result;
+        }''')
+        assert saved_crop['w'] == 200 and saved_crop['h'] == 225, saved_crop
+        assert saved_crop['rgb'][0] < 20 and saved_crop['rgb'][2] > 235, saved_crop
         page.get_by_role('tab', name='Образ', exact=True).click()
         # Restoring the full photo invalidates the old description.
         page.get_by_role('button', name='Обрезать фото', exact=True).click()
@@ -225,6 +268,7 @@ try:
         page.get_by_role('button', name='Закрыть', exact=True).click()
         page.wait_for_function('document.querySelector(".pc-status").textContent === "Запрос отменён."')
         page.locator('#pinclothes-sendbar').tap()
+        assert page.evaluate('readWardrobe().then(items => items.length)') == 3
         assert page.get_by_role('button', name='С аксессуарами', exact=True).get_attribute('aria-pressed') == 'true'
         page.get_by_role('button', name='Только одежда', exact=True).click()
 
@@ -243,8 +287,10 @@ try:
         for width, height in [(320, 568), (390, 844), (430, 932), (844, 390), (390, 420), (1200, 900)]:
             page.set_viewport_size({'width': width, 'height': height})
             page.wait_for_timeout(100)
-            for tab in ['Образ', 'Результат']:
+            for tab in ['Образ', 'Результат', 'Шкаф']:
                 page.get_by_role('tab', name=tab, exact=True).click()
+                if tab == 'Шкаф':
+                    page.locator('.pc-wardrobe-card').first.wait_for()
                 assert page.locator('.pc-body').evaluate('(d) => d.scrollWidth <= d.clientWidth')
                 assert page.locator('.pc-footer').evaluate('''(d) => {
                     const r = d.getBoundingClientRect();
@@ -273,8 +319,68 @@ try:
         assert page.locator('#pinclothes-sendbar').count() == 0
         page.locator('#pinclothes-wand').click()
         assert page.get_by_role('button', name='Только одежда', exact=True).get_attribute('aria-pressed') == 'true'
+        assert page.evaluate('wardrobeOpens') == 0
+        page.get_by_role('tab', name='Шкаф', exact=True).click()
+        page.locator('.pc-wardrobe-card').first.wait_for()
+        assert page.locator('.pc-wardrobe-card').count() == 3
+        page.get_by_role('button', name='Закрыть', exact=True).click()
+        page.wait_for_function('previewURLs.size === 0')
+        page.evaluate('document.getElementById("extensionsMenu").style.display = ""')
+        page.locator('#pinclothes-wand').click()
+        page.locator('.pc-wardrobe-card').first.wait_for()
+        assert page.locator('.pc-wardrobe-card').count() == 3
+
+        # Seed a larger collection: each page replaces, rather than accumulates, blobs/DOM.
+        page.get_by_role('tab', name='Образ', exact=True).click()
+        page.evaluate('''async () => {
+            const [sample] = await readWardrobe();
+            await new Promise((resolve, reject) => {
+                const request = indexedDB.open('pinClothes-wardrobe', 1);
+                request.onsuccess = () => {
+                    const db = request.result; const tx = db.transaction('items', 'readwrite');
+                    for (let n = 0; n < 22; n++) {
+                        const { id, ...item } = sample;
+                        tx.objectStore('items').add({ ...item, description: `clothes: item ${n}` });
+                    }
+                    tx.oncomplete = () => { db.close(); resolve(); };
+                    tx.onabort = () => { db.close(); reject(tx.error); };
+                };
+            });
+        }''')
+        page.get_by_role('tab', name='Шкаф', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+        assert page.locator('.pc-wardrobe-description').first.inner_text() == 'clothes: item 21'
+        assert page.evaluate('previewURLs.size') == 12
+        page.get_by_role('button', name='Дальше', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-wardrobe-description")?.textContent === "clothes: item 9"')
+        assert page.locator('.pc-wardrobe-card').count() == 12
+        assert page.evaluate('previewURLs.size') == 12
+        page.get_by_role('button', name='Дальше', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
+        assert page.get_by_role('button', name='Дальше', exact=True).is_disabled()
+        page.get_by_role('button', name='Удалить образ', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
+        assert page.evaluate('readWardrobe().then(items => items.length)') == 24
+        page.get_by_role('button', name='Назад', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-wardrobe-description")?.textContent === "clothes: item 21"')
+        page.get_by_role('tab', name='Образ', exact=True).click()
+        assert page.evaluate('previewURLs.size') == 0
+
+        # Storage failures preserve the generated result, and never add a phantom card.
+        page.evaluate('() => { indexedDB.open = () => { throw new DOMException("Storage unavailable", "QuotaExceededError"); }; }')
+        page.locator('.pc-file').set_input_files({'name': 'outfit.png', 'mimeType': 'image/png', 'buffer': png})
+        page.get_by_role('button', name='Отмена', exact=True).click()
+        page.get_by_role('button', name='Описать одежду', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-status").textContent.includes("не сохранено в шкаф")')
+        assert page.locator('.pc-result').input_value().startswith('clothes:')
+        assert page.evaluate('readWardrobe().then(items => items.length)') == 24
+        page.get_by_role('tab', name='Шкаф', exact=True).click()
+        page.get_by_role('button', name='Повторить загрузку', exact=True).wait_for()
+        page.evaluate('() => { indexedDB.open = openDatabase; }')
+        page.get_by_role('button', name='Повторить загрузку', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
         assert not errors, errors
         browser.close()
-        print('PASS: touch crop, crop pixels in request, reset/cancel, accessory prompts, touch UI, profiles, draft insertion, errors, cancellation, responsive layout, persisted settings')
+        print('PASS: touch crop, crop pixels in request and wardrobe, accessory prompts, profiles, draft insertion, errors, cancellation, responsive layout, persisted settings, WebP collection, pagination, deletion, memory cleanup, storage failures')
 finally:
     server.shutdown()

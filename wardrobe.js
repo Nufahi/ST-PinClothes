@@ -145,7 +145,7 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
     const toolbar = node('div', 'pc-wardrobe-toolbar');
     const sort = node('select', 'pc-input');
     sort.setAttribute('aria-label', 'Порядок образов');
-    sort.append(new Option('Новые ↓', 'prev'), new Option('Старые ↑', 'next'));
+    sort.append(new Option('Новые', 'prev'), new Option('Старые', 'next'));
     sort.addEventListener('change', () => resetPage());
     toolbar.append(scopes, sort);
     const filters = node('div', 'pc-tag-presets pc-wardrobe-filters');

@@ -557,7 +557,7 @@ function createDialog() {
 
     const output = ui.panels.result;
     ui.resultEmpty = node('div', 'pc-empty');
-    ui.resultEmpty.append(icon('spark'), node('h3', '', 'Здесь будет описание'), node('p', 'pc-hint', 'Добавь фото во вкладке «Образ» и нажми «Описать одежду».'));
+    ui.resultEmpty.append(node('h3', '', 'Здесь будет описание'), node('p', 'pc-hint', 'Добавь фото во вкладке «Образ» и нажми «Описать одежду».'));
     ui.result = node('textarea', 'pc-input pc-result');
     ui.result.rows = 7;
     ui.result.placeholder = 'clothes: …';

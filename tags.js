@@ -1,5 +1,20 @@
 const PRESETS = ['Женское', 'Мужское', 'Унисекс', 'Повседневное', 'Деловое', 'Вечернее', 'Спортивное', 'Летнее', 'Зимнее'];
 
+function suggestions() {
+    return normalizeTags([...PRESETS, ...(SillyTavern.getContext().extensionSettings.pinClothes?.customTags || [])]);
+}
+
+function rememberTags(tags) {
+    const context = SillyTavern.getContext();
+    const settings = context.extensionSettings.pinClothes ??= {};
+    const presetKeys = PRESETS.map(tag => tag.toLocaleLowerCase('ru'));
+    const saved = normalizeTags([...(settings.customTags || []), ...tags])
+        .filter(tag => !presetKeys.includes(tag.toLocaleLowerCase('ru')));
+    if (JSON.stringify(saved) === JSON.stringify(settings.customTags || [])) return;
+    settings.customTags = saved;
+    context.saveSettingsDebounced();
+}
+
 export function normalizeTags(values = []) {
     const tags = new Map();
     for (const value of values) {
@@ -15,14 +30,8 @@ export function createTagEditor({ node, button }, values = []) {
     const presets = node('div', 'pc-tag-presets');
     presets.setAttribute('role', 'group');
     presets.setAttribute('aria-label', 'Готовые теги');
-    const options = PRESETS.map(tag => {
-        const option = button(tag, () => {
-            option.setAttribute('aria-pressed', String(option.getAttribute('aria-pressed') !== 'true'));
-        });
-        option.setAttribute('aria-pressed', 'false');
-        presets.append(option);
-        return option;
-    });
+    let options = [];
+    let disabled = false;
     const label = node('label', 'pc-field');
     const custom = node('input', 'pc-input');
     custom.type = 'text';
@@ -31,13 +40,39 @@ export function createTagEditor({ node, button }, values = []) {
     label.append(node('span', '', 'Свои теги через запятую'), custom);
     element.append(presets, label);
 
+    function getTags() {
+        return normalizeTags([
+            ...options.filter(option => option.getAttribute('aria-pressed') === 'true').map(option => option.textContent),
+            ...custom.value.split(','),
+        ]);
+    }
+
+    function acceptCustom() {
+        if (!custom.value.trim()) return;
+        setTags(getTags());
+    }
+    custom.addEventListener('change', () => rememberTags(getTags()));
+    custom.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.isComposing) {
+            event.preventDefault();
+            acceptCustom();
+        }
+    });
+
     function setTags(tags) {
         const normalized = normalizeTags(tags);
+        rememberTags(normalized);
         const keys = normalized.map(tag => tag.toLocaleLowerCase('ru'));
-        options.forEach((option, index) => {
-            option.setAttribute('aria-pressed', String(keys.includes(PRESETS[index].toLocaleLowerCase('ru'))));
+        options = suggestions().map(tag => {
+            const option = button(tag, () => {
+                option.setAttribute('aria-pressed', String(option.getAttribute('aria-pressed') !== 'true'));
+            });
+            option.setAttribute('aria-pressed', String(keys.includes(tag.toLocaleLowerCase('ru'))));
+            option.disabled = disabled;
+            return option;
         });
-        custom.value = normalized.filter(tag => !PRESETS.some(preset => preset.toLocaleLowerCase('ru') === tag.toLocaleLowerCase('ru'))).join(', ');
+        presets.replaceChildren(...options);
+        custom.value = '';
     }
     setTags(values);
 
@@ -45,12 +80,12 @@ export function createTagEditor({ node, button }, values = []) {
         element,
         setTags,
         getTags() {
-            return normalizeTags([
-                ...PRESETS.filter((_, index) => options[index].getAttribute('aria-pressed') === 'true'),
-                ...custom.value.split(','),
-            ]);
+            const tags = getTags();
+            setTags(tags);
+            return tags;
         },
-        setDisabled(disabled) {
+        setDisabled(value) {
+            disabled = value;
             custom.disabled = disabled;
             options.forEach(option => { option.disabled = disabled; });
         },

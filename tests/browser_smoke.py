@@ -160,6 +160,8 @@ try:
         card.get_by_role('button', name='Теги', exact=True).click()
         card.get_by_role('button', name='Женское', exact=True).click()
         card.get_by_role('button', name='Мужское', exact=True).click()
+        card.get_by_role('button', name='любимое', exact=True).click()
+        card.get_by_role('button', name='свидание', exact=True).click()
         card.get_by_label('Свои теги через запятую').fill('<b>кастом</b>')
         card.get_by_role('button', name='Сохранить теги', exact=True).click()
         page.wait_for_function('document.querySelector(".pc-wardrobe > [role=status]").textContent === "Теги сохранены."')
@@ -211,6 +213,7 @@ try:
         assert page.get_by_label('Добавлять в шкаф', exact=True).is_checked()
         assert page.get_by_label('Свои теги через запятую').input_value() == ''
         assert page.get_by_role('button', name='Женское', exact=True).get_attribute('aria-pressed') == 'false'
+        assert page.get_by_role('button', name='любимое', exact=True).get_attribute('aria-pressed') == 'false'
         assert cropped != original
         pixels = page.evaluate('''async (src) => {
             const img = new Image(); img.src = src; await img.decode();
@@ -491,6 +494,7 @@ try:
 
         # Tag edits immediately update the filter results and the list of custom filters.
         page.locator('.pc-wardrobe-card').get_by_role('button', name='Теги', exact=True).click()
+        page.locator('.pc-card-tag-editor').get_by_role('button', name='Для Алисы', exact=True).click()
         page.locator('.pc-card-tag-editor').get_by_label('Свои теги через запятую').fill('Новый тег')
         page.get_by_role('button', name='Сохранить теги', exact=True).click()
         page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 12')
@@ -528,6 +532,17 @@ try:
         legacy.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 1')
         assert legacy.locator('.pc-wardrobe-description').inner_text() == 'clothes: legacy'
         legacy_context.close()
+        page.reload()
+        page.locator('#pinclothes-wand').click()
+        page.locator('.pc-tag-details > summary').click()
+        assert page.get_by_role('button', name='Новый тег', exact=True).get_attribute('aria-pressed') == 'false'
+        page.get_by_label('Свои теги через запятую').fill('Осеннее')
+        page.get_by_label('Свои теги через запятую').press('Enter')
+        assert page.get_by_role('button', name='Осеннее', exact=True).get_attribute('aria-pressed') == 'true'
+        assert page.get_by_label('Свои теги через запятую').input_value() == ''
+        page.get_by_label('Свои теги через запятую').fill('осеннее, Осеннее')
+        page.get_by_label('Свои теги через запятую').press('Enter')
+        assert page.get_by_role('button', name='Осеннее', exact=True).count() == 1
         assert not errors, errors
         browser.close()
         print('PASS: touch crop, crop pixels in request and wardrobe, accessory prompts, profiles, draft insertion, errors, cancellation, responsive layout, persisted settings, WebP collection, pagination, deletion, memory cleanup, storage failures')

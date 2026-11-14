@@ -113,6 +113,7 @@ function syncButtons() {
     ui.profile.disabled = busy;
     ui.refresh.disabled = busy;
     ui.comment.disabled = busy;
+    ui.clearComment.disabled = busy || !ui.comment.value;
     for (const option of ui.scopeOptions) option.disabled = busy;
     ui.tokens.disabled = busy;
     ui.file.disabled = busy;
@@ -488,8 +489,16 @@ function createDialog() {
     ui.comment.rows = 2;
     ui.comment.maxLength = 4000;
     ui.comment.placeholder = 'Например: добавь очки, только девушка слева…';
+    ui.comment.addEventListener('input', syncButtons);
+    ui.clearComment = button('Стереть', () => {
+        ui.comment.value = '';
+        syncButtons();
+        ui.comment.focus({ preventScroll: true });
+    });
+    ui.clearComment.classList.add('pc-clear-comment');
+    ui.clearComment.setAttribute('aria-label', 'Стереть пожелание');
     const comment = node('details', 'pc-comment');
-    comment.append(node('summary', '', 'Добавить пожелание'), field('Дополнительный комментарий', ui.comment));
+    comment.append(node('summary', '', 'Добавить пожелание'), field('Дополнительный комментарий', ui.comment), ui.clearComment);
     outfit.append(pinterest, upload, profileRow, scope, ui.rule, comment);
 
     const preferences = ui.panels.settings;

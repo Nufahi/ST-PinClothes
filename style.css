@@ -121,10 +121,10 @@
 .pc-dialog .pc-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 30px 18px; }
 .pc-dialog .pc-empty > .pc-icon { width: 40px; height: 40px; color: var(--pc-accent); }
 .pc-dialog .pc-result { min-height: 210px; line-height: 1.7; }
-.pc-dialog .pc-wardrobe, .pc-dialog .pc-wardrobe-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.pc-dialog .pc-wardrobe-card { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 12px; border: 1px solid var(--pc-line); border-radius: 16px; background: var(--pc-soft); }
-.pc-dialog .pc-wardrobe-image { display: block; width: 88px; height: 116px; object-fit: contain; border-radius: 10px; background: #0002; }
-.pc-dialog .pc-wardrobe-content { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.pc-dialog .pc-wardrobe, .pc-dialog .pc-wardrobe-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pc-dialog .pc-wardrobe-card { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; padding: 8px; border: 1px solid var(--pc-line); border-radius: 12px; background: var(--pc-soft); }
+.pc-dialog .pc-wardrobe-image { display: block; width: 64px; height: 84px; object-fit: contain; border-radius: 8px; background: #0002; }
+.pc-dialog .pc-wardrobe-content { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
 .pc-dialog .pc-wardrobe-badge { padding: 3px 8px; border-radius: 20px; color: var(--pc-accent); background: color-mix(in srgb, var(--pc-accent) 12%, transparent); font-size: 11px; font-weight: 600; }
 .pc-dialog .pc-wardrobe-description { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
 .pc-dialog .pc-wardrobe-content .pc-actions { flex-wrap: wrap; gap: 4px; }
@@ -139,10 +139,15 @@
 .pc-dialog .pc-tag-presets .pc-button { min-height: 44px; padding: 6px 10px; font-size: 12px; border-radius: 20px; }
 .pc-dialog .pc-tag-presets [aria-pressed="true"] { border-color: var(--pc-accent); background: color-mix(in srgb, var(--pc-accent) 12%, var(--pc-bg)); }
 .pc-dialog .pc-wardrobe-tags .pc-wardrobe-badge { max-width: 100%; overflow-wrap: anywhere; }
-.pc-dialog .pc-wardrobe-controls { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pc-dialog .pc-wardrobe-controls { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pc-dialog .pc-wardrobe-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+.pc-dialog .pc-wardrobe-toolbar .pc-input { width: auto; min-width: 0; min-height: 32px; padding: 4px 24px 4px 8px; }
+.pc-dialog .pc-wardrobe .pc-button { min-height: 32px; padding: 4px 8px; gap: 4px; border-radius: 8px; font-size: 12px; }
+.pc-dialog .pc-wardrobe .pc-icon-button { width: 32px; min-width: 32px; padding: 4px; }
+.pc-dialog .pc-wardrobe .pc-icon { width: 18px; height: 18px; }
 .pc-dialog .pc-wardrobe-scopes { display: flex; flex-wrap: wrap; gap: 6px; }
 .pc-dialog .pc-wardrobe-scopes [aria-pressed="true"] { border-color: var(--pc-accent); background: color-mix(in srgb, var(--pc-accent) 12%, var(--pc-bg)); }
-.pc-dialog .pc-wardrobe-filters { max-height: 180px; overflow-y: auto; }
+.pc-dialog .pc-wardrobe-filters { max-height: 104px; gap: 4px; overflow-y: auto; }
 .pc-dialog .pc-wardrobe-filters .pc-button { max-width: 100%; overflow-wrap: anywhere; }
 .pc-dialog .pc-footer { padding: 10px 16px 16px; border-top: 1px solid var(--pc-line); flex-shrink: 0; }
 .pc-dialog .pc-status { font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; opacity: 0.75; max-height: 4.2em; overflow-y: auto; margin-bottom: 10px; }

@@ -122,7 +122,6 @@ function readPage(before, chatKey, selectedTags, direction) {
 
 export function createWardrobe({ node, button, iconButton, copyText, getChat }) {
     const element = node('div', 'pc-wardrobe');
-    const hint = node('p', 'pc-hint', 'Образы добавляются после описания, если включено «Добавлять в шкаф». Коллекция хранится только в этом браузере.');
     const message = node('p', 'pc-hint');
     message.setAttribute('role', 'status');
     const list = node('div', 'pc-wardrobe-list');
@@ -143,13 +142,12 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
     const all = button('Все образы', () => changeScope(false));
     const currentChat = button('Этот чат', () => changeScope(true));
     scopes.append(all, currentChat);
-    const scopeLabel = node('p', 'pc-hint');
-    const sortLabel = node('label', 'pc-field');
+    const toolbar = node('div', 'pc-wardrobe-toolbar');
     const sort = node('select', 'pc-input');
     sort.setAttribute('aria-label', 'Порядок образов');
-    sort.append(new Option('Сначала новые', 'prev'), new Option('Сначала старые', 'next'));
+    sort.append(new Option('Новые ↓', 'prev'), new Option('Старые ↑', 'next'));
     sort.addEventListener('change', () => resetPage());
-    sortLabel.append(node('span', '', 'Порядок образов'), sort);
+    toolbar.append(scopes, sort);
     const filters = node('div', 'pc-tag-presets pc-wardrobe-filters');
     filters.setAttribute('role', 'group');
     filters.setAttribute('aria-label', 'Фильтр по тегам');
@@ -157,8 +155,8 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
         selectedTags.clear();
         resetPage();
     });
-    const filterHint = node('p', 'pc-hint', 'Выбери теги: будут показаны образы со всеми выбранными тегами.');
-    controls.append(scopes, scopeLabel, sortLabel, filterHint, filters);
+    filters.title = 'Образы со всеми выбранными тегами';
+    controls.append(toolbar, filters);
 
     function resetPage() {
         boundaries = [undefined];
@@ -171,7 +169,7 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
         all.setAttribute('aria-pressed', String(!local));
         currentChat.setAttribute('aria-pressed', String(local));
         currentChat.hidden = !chat;
-        scopeLabel.textContent = local ? `Чат: ${chat.name}. Только образы, загруженные в этом чате.` : 'Все сохранённые образы из всех чатов и вне чата.';
+        currentChat.title = chat ? `Чат: ${chat.name}` : '';
         resetPage();
     }
 
@@ -204,7 +202,7 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
     const retry = button('Повторить загрузку', () => void load());
     retry.hidden = true;
     navigation.append(previous, pageLabel, next);
-    element.append(controls, hint, message, retry, list, navigation);
+    element.append(controls, message, retry, list, navigation);
 
     function release() {
         list.replaceChildren();
@@ -247,7 +245,6 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
                 urls.push(url);
                 image.src = url;
                 const content = node('div', 'pc-wardrobe-content');
-                const badge = node('span', 'pc-wardrobe-badge', 'Образ');
                 const tags = node('div', 'pc-wardrobe-tags');
                 const renderTags = () => {
                     tags.replaceChildren(...(item.tags || []).map(tag => node('span', 'pc-wardrobe-badge', tag)));
@@ -325,7 +322,7 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
                     }
                 });
                 actions.append(copy, edit, remove);
-                content.append(badge, tags, description, actions);
+                content.append(tags, description, actions);
                 card.append(image, content);
                 card.append(editorPanel);
                 list.append(card);

@@ -468,7 +468,8 @@ function createDialog() {
     ui.file.type = 'file';
     ui.file.hidden = true;
     ui.file.setAttribute('aria-label', 'Выбрать файл');
-    ui.file.accept = 'image/jpeg,image/png,image/webp,image/gif';
+    // Mobile browsers use this hint to offer the system photo picker.
+    ui.file.accept = 'image/*';
     ui.file.addEventListener('change', () => void loadImage(ui.file.files[0]));
     ui.filename = node('div', 'pc-hint pc-filename');
     ui.clear = iconButton('Убрать', 'trash', clearImage);

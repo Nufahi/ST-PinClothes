@@ -57,7 +57,6 @@ function icon(name) {
         crop: 'M6 3v15h15M3 6h15v15',
         shirt: 'm8 3-5 3-2 5 5 2v8h12v-8l5-2-2-5-5-3c0 4-8 4-8 0Z',
         glasses: 'M3 13 5 6h3M21 13l-2-7h-3M9 14c2-2 4-2 6 0M9 15a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM23 15a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
-        spark: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z',
     };
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -484,7 +483,7 @@ function createDialog() {
     const modes = node('div', 'pc-scope');
     modes.setAttribute('role', 'group');
     modes.setAttribute('aria-label', 'Режим описания');
-    ui.modeOptions = [['caption', 'Описание одежды', 'shirt'], ['tags', 'Danbooru · одежда', 'spark'], ['persona', 'Теги персоны', 'spark'], ['bot', 'Теги бота', 'spark']].map(([mode, label, symbol]) => {
+    ui.modeOptions = [['caption', 'Описание одежды', 'shirt'], ['tags', 'Danbooru · одежда', 'tags'], ['persona', 'Теги персоны', 'address-card'], ['bot', 'Теги бота', 'robot']].map(([mode, label, symbol]) => {
         const option = button('', () => {
             if (ui.mode === mode) return;
             ui.mode = mode;
@@ -494,7 +493,9 @@ function createDialog() {
             syncButtons();
         });
         option.dataset.mode = mode;
-        option.append(icon(symbol), node('span', '', label));
+        const glyph = node('span', `pc-mode-icon fa-solid fa-${symbol}`);
+        glyph.setAttribute('aria-hidden', 'true');
+        option.append(glyph, node('span', '', label));
         modes.append(option);
         return option;
     });

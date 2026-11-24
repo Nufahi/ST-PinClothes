@@ -96,7 +96,8 @@
 .pc-dialog .pc-scope { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 5px; border: 1px solid var(--pc-line); border-radius: 16px; background: var(--pc-soft); }
 .pc-dialog .pc-scope .pc-button { flex-direction: column; gap: 7px; min-width: 0; padding: 12px 4px; border: 1px solid transparent; background: transparent; font-size: 12px; opacity: .6; }
 .pc-dialog .pc-scope .pc-button[aria-pressed="true"] { opacity: 1; border-color: color-mix(in srgb, var(--pc-accent) 65%, transparent); background: color-mix(in srgb, var(--pc-accent) 12%, var(--pc-bg)); }
-.pc-dialog .pc-scope [aria-pressed="true"] .pc-icon { color: var(--pc-accent); }
+.pc-dialog .pc-mode-icon { font-size: 20px; line-height: 21px; }
+.pc-dialog .pc-scope [aria-pressed="true"] :is(.pc-icon, .pc-mode-icon) { color: var(--pc-accent); }
 .pc-dialog .pc-actions { display: flex; align-items: center; gap: 8px; }
 .pc-dialog .pc-button {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;

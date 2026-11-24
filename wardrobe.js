@@ -1,4 +1,4 @@
-import { errorMessage } from './api.js';
+import { errorMessage, isPortrait } from './api.js';
 import { createTagEditor, normalizeTags } from './tags.js';
 
 const DATABASE = 'pinClothes-wardrobe';
@@ -7,7 +7,7 @@ const METADATA = 'metadata';
 const PAGE_SIZE = 12;
 
 function metadata(item) {
-    return { id: item.id, tags: normalizeTags(item.tags), chatKey: item.chat?.key || null };
+    return { id: item.id, mode: item.mode, tags: normalizeTags(item.tags), chatKey: item.chat?.key || null };
 }
 
 function openDatabase() {
@@ -77,10 +77,10 @@ async function thumbnail(source) {
     }
 }
 
-export async function saveOutfit(source, description, name, tags = [], chat = null) {
-    const preview = await thumbnail(source);
+export async function saveOutfit(source, description, name, tags = [], chat = null, mode = 'caption') {
+    const preview = !source && isPortrait(mode) ? null : await thumbnail(source);
     return transaction('readwrite', (store, done, meta) => {
-        const item = { preview, description, name, tags: normalizeTags(tags), chat, createdAt: Date.now() };
+        const item = { preview, description, name, mode, tags: normalizeTags(tags), chat, createdAt: Date.now() };
         const request = store.add(item);
         request.onsuccess = () => {
             meta.put(metadata({ ...item, id: request.result }));
@@ -89,7 +89,7 @@ export async function saveOutfit(source, description, name, tags = [], chat = nu
     });
 }
 
-function readPage(before, chatKey, selectedTags, direction) {
+function readPage(before, chatKey, selectedTags, direction, dossier) {
     return transaction('readonly', (store, done, meta) => {
         const ids = [];
         const tags = new Map();
@@ -106,7 +106,7 @@ function readPage(before, chatKey, selectedTags, direction) {
                 return;
             }
             const item = cursor.value;
-            if (chatKey === null || item.chatKey === chatKey) {
+            if (isPortrait(item.mode) === dossier && (chatKey === null || item.chatKey === chatKey)) {
                 const keys = item.tags.map(tag => tag.toLocaleLowerCase('ru'));
                 item.tags.forEach((tag, index) => { if (!tags.has(keys[index])) tags.set(keys[index], tag); });
                 const afterBoundary = before == null || (direction === 'prev' ? item.id < before : item.id > before);
@@ -136,6 +136,19 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
     let local = false;
     const selectedTags = new Map();
     const controls = node('div', 'pc-wardrobe-controls');
+    let dossier = false;
+    const sections = node('div', 'pc-wardrobe-sections');
+    sections.setAttribute('role', 'group');
+    sections.setAttribute('aria-label', 'Раздел шкафа');
+    for (const [label, value] of [['Одежда', false], ['Досье', true]]) {
+        const option = button(label, () => {
+            dossier = value;
+            for (const tab of sections.children) tab.setAttribute('aria-pressed', String(tab === option));
+            changeScope(local);
+        });
+        option.setAttribute('aria-pressed', String(!value));
+        sections.append(option);
+    }
     const scopes = node('div', 'pc-wardrobe-scopes');
     scopes.setAttribute('role', 'group');
     scopes.setAttribute('aria-label', 'Коллекция');
@@ -156,7 +169,7 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
         resetPage();
     });
     filters.title = 'Образы со всеми выбранными тегами';
-    controls.append(toolbar, filters);
+    controls.append(sections, toolbar, filters);
 
     function resetPage() {
         boundaries = [undefined];
@@ -166,6 +179,7 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
     function changeScope(value) {
         local = value && Boolean(chat);
         selectedTags.clear();
+        all.textContent = dossier ? 'Все досье' : 'Все образы';
         all.setAttribute('aria-pressed', String(!local));
         currentChat.setAttribute('aria-pressed', String(local));
         currentChat.hidden = !chat;
@@ -221,9 +235,10 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
         message.textContent = 'Открываю шкаф…';
         list.setAttribute('aria-busy', 'true');
         try {
-            const { items, more, tags } = await readPage(boundaries.at(-1), local ? chat.key : null, [...selectedTags.keys()], sort.value);
+            const { items, more, tags } = await readPage(boundaries.at(-1), local ? chat.key : null, [...selectedTags.keys()], sort.value, dossier);
             if (!visible || current !== version) return;
             renderFilters(tags);
+            filters.hidden = dossier;
             if (!items.length && boundaries.length > 1) {
                 boundaries.pop();
                 void load();
@@ -231,20 +246,31 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
             }
             message.textContent = items.length ? '' : selectedTags.size ? 'Нет образов с выбранными тегами.' : local ? 'В этом чате пока нет образов. Все сохранённые доступны в «Все образы».' : 'Шкаф пока пуст. Добавь фото во вкладке «Образ» и получи описание.';
             pageLabel.textContent = `Стр. ${boundaries.length}`;
+            if (dossier && !items.length) message.textContent = local ? 'В этом чате пока нет досье.' : 'Здесь появятся сохранённые описания ботов и персон.';
             navigation.hidden = !items.length;
             previous.disabled = boundaries.length === 1;
             next.disabled = !more;
             nextBoundary = more ? items.at(-1).id : undefined;
             for (const item of items) {
                 const card = node('article', 'pc-wardrobe-card');
-                const image = node('img', 'pc-wardrobe-image');
-                image.alt = item.name || 'Сохранённый образ';
-                image.loading = 'lazy';
-                image.decoding = 'async';
-                const url = URL.createObjectURL(item.preview);
-                urls.push(url);
-                image.src = url;
+                const cover = node('div', 'pc-card-cover');
+                if (item.preview) {
+                    const image = node('img', 'pc-wardrobe-image');
+                    image.alt = item.name || 'Сохранённый образ';
+                    image.loading = 'lazy';
+                    image.decoding = 'async';
+                    const url = URL.createObjectURL(item.preview);
+                    urls.push(url);
+                    image.src = url;
+                    cover.append(image);
+                } else {
+                    const glyph = node('span', `fa-solid fa-${item.mode === 'bot' ? 'robot' : 'address-card'}`);
+                    glyph.setAttribute('aria-hidden', 'true');
+                    cover.append(glyph);
+                }
+                if (item.mode === 'tags') cover.append(node('span', 'pc-nai-badge', 'NAI'));
                 const content = node('div', 'pc-wardrobe-content');
+                if (dossier) content.append(node('strong', '', `${item.mode === 'bot' ? 'Бот' : 'Персона'} · ${item.name}`));
                 const tags = node('div', 'pc-wardrobe-tags');
                 const renderTags = () => {
                     tags.replaceChildren(...(item.tags || []).map(tag => node('span', 'pc-wardrobe-badge', tag)));
@@ -306,7 +332,7 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
                     message.textContent = copied ? 'Описание скопировано.' : 'Не удалось скопировать. Выдели текст карточки вручную.';
                     message.classList.toggle('pc-error', !copied);
                 });
-                const remove = iconButton('Удалить образ', 'trash', async () => {
+                const remove = iconButton(dossier ? 'Удалить досье' : 'Удалить образ', 'trash', async () => {
                     remove.disabled = true;
                     try {
                         await transaction('readwrite', (store, done, meta) => {
@@ -322,8 +348,9 @@ export function createWardrobe({ node, button, iconButton, copyText, getChat }) 
                     }
                 });
                 actions.append(copy, edit, remove);
+                edit.hidden = dossier;
                 content.append(tags, description, actions);
-                card.append(image, content);
+                card.append(cover, content);
                 card.append(editorPanel);
                 list.append(card);
             }

@@ -572,6 +572,15 @@ try:
         page.wait_for_function('document.querySelector(".pc-result").value.startsWith("white_shirt,")')
         request = page.evaluate('calls.at(-1)')
         assert 'Danbooru tags' in request['messages'][0]['content'] and 'Wing tattoo' not in str(request)
+        page.reload()
+        page.locator('#pinclothes-wand').click()
+        page.get_by_role('tab', name='Шкаф', exact=True).click()
+        page.locator('.pc-nai-badge').wait_for()
+        assert not page.locator('.pc-wardrobe-description').filter(has_text='1.3::slender').count()
+        page.get_by_role('button', name='Досье', exact=True).click()
+        page.wait_for_function('document.querySelectorAll(".pc-wardrobe-card").length === 2 && !document.querySelector(".pc-nai-badge")')
+        assert page.locator('.pc-wardrobe-card img').count() == 1  # bot photo + text-only persona
+        assert all('1.3::slender' in text for text in page.locator('.pc-wardrobe-description').all_text_contents())
         assert not errors, errors
         browser.close()
         print('PASS: touch crop, crop pixels in request and wardrobe, accessory prompts, profiles, draft insertion, errors, cancellation, responsive layout, persisted settings, WebP collection, pagination, deletion, memory cleanup, storage failures')

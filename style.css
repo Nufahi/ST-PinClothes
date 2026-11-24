@@ -128,6 +128,10 @@
 .pc-dialog .pc-wardrobe, .pc-dialog .pc-wardrobe-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .pc-dialog .pc-wardrobe-card { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; padding: 8px; border: 1px solid var(--pc-line); border-radius: 12px; background: var(--pc-soft); }
 .pc-dialog .pc-wardrobe-image { display: block; width: 64px; height: 84px; object-fit: contain; border-radius: 8px; background: #0002; }
+.pc-dialog .pc-card-cover { position: relative; display: grid; place-items: center; height: 84px; border-radius: 8px; background: var(--pc-soft); }
+.pc-dialog .pc-nai-badge { position: absolute; bottom: 3px; left: 3px; padding: 2px 5px; border-radius: 4px; font: bold 10px/1.3 sans-serif; letter-spacing: .06em; color: white; background: #523477; }
+.pc-dialog .pc-wardrobe-sections { display: flex; gap: 6px; }
+.pc-dialog .pc-wardrobe-sections [aria-pressed="true"] { border-color: var(--pc-accent); }
 .pc-dialog .pc-wardrobe-content { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
 .pc-dialog .pc-wardrobe-badge { padding: 3px 8px; border-radius: 20px; color: var(--pc-accent); background: color-mix(in srgb, var(--pc-accent) 12%, transparent); font-size: 11px; font-weight: 600; }
 .pc-dialog .pc-wardrobe-description { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }

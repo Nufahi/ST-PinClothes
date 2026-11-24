@@ -114,6 +114,8 @@ function syncButtons() {
     ui.generate.disabled = busy || loadingImage || (!image && !portrait) || !ui.profile.value;
     for (const option of ui.modeOptions) option.disabled = busy;
     ui.scope.hidden = ui.collection.hidden = portrait;
+    ui.dossierLabel.hidden = !portrait;
+    ui.saveDossier.disabled = busy;
     ui.cancel.hidden = !busy;
     ui.profile.disabled = busy;
     ui.refresh.disabled = busy;
@@ -270,7 +272,13 @@ async function generate() {
     status(image ? 'Модель рассматривает изображение…' : 'Модель читает описание…');
     syncButtons();
     try {
-        const result = await describe(context(), {
+        const ctx = context();
+        const portrait = isPortrait(ui.mode);
+        const chat = portrait ? wardrobeChat(ctx) : imageChat;
+        const name = ui.mode === 'persona' ? ctx.name1 || 'Пользователь'
+            : ui.mode === 'bot' ? (ctx.groupId == null || ctx.groupId === '' ? ctx.characters?.[ctx.characterId]?.name : '') || 'Персонаж'
+            : originalFile?.name || 'Изображение из буфера';
+        const result = await describe(ctx, {
             profileId: ui.profile.value,
             image,
             mode: ui.mode,
@@ -281,12 +289,12 @@ async function generate() {
         });
         clearTimeout(timeout);
         let saved = false;
-        if (!isPortrait(ui.mode) && ui.saveToWardrobe.checked) {
+        if (portrait ? ui.saveDossier.checked : ui.saveToWardrobe.checked) {
             try {
-                await saveOutfit(image, result, originalFile?.name || 'Изображение из буфера', ui.tags.getTags(), imageChat);
+                await saveOutfit(image, result, name, portrait ? [] : ui.tags.getTags(), chat, ui.mode);
                 saved = true;
             } catch (error) {
-                status(`Описание готово, но не сохранено в шкаф: ${errorMessage(error)}`, true);
+                status(`Описание готово, но не сохранено в ${portrait ? 'досье' : 'шкаф'}: ${errorMessage(error)}`, true);
             }
         } else {
             status('Готово. Здесь текст можно отредактировать.');
@@ -294,7 +302,7 @@ async function generate() {
         ui.result.value = result;
         showView('result');
         if (dialog.open) ui.tabs.result.focus({ preventScroll: true });
-        if (saved) status('Готово — образ добавлен в шкаф. Здесь текст можно отредактировать.');
+        if (saved) status(portrait ? 'Готово — описание сохранено в «Шкаф → Досье».' : 'Готово — образ добавлен в шкаф. Здесь текст можно отредактировать.');
     } catch (error) {
         const reason = controller.signal.reason;
         if (controller.signal.aborted && reason?.name !== 'TimeoutError') status('Запрос отменён.');
@@ -553,7 +561,12 @@ function createDialog() {
     ui.tagDetails = node('details', 'pc-tag-details');
     ui.tagDetails.append(node('summary', '', 'Теги образа'), ui.tags.element);
     collection.append(saveLabel, ui.tagDetails);
-    outfit.append(modes, pinterest, upload, profileRow, scope, ui.rule, comment, collection);
+    ui.dossierLabel = node('label', 'pc-toggle');
+    ui.saveDossier = node('input');
+    ui.saveDossier.type = 'checkbox';
+    ui.saveDossier.checked = true;
+    ui.dossierLabel.append(ui.saveDossier, node('span', '', 'Сохранять в досье'));
+    outfit.append(modes, pinterest, upload, profileRow, scope, ui.rule, comment, collection, ui.dossierLabel);
 
     const preferences = ui.panels.settings;
     preferences.append(node('h3', '', 'Настройки'), sendbarToggle());

@@ -1,4 +1,4 @@
-import { describe, errorMessage, getProfiles, SYSTEM_PROMPT, ACCESSORIES_PROMPT } from './api.js';
+import { describe, errorMessage, getProfiles, isPortrait, promptFor } from './api.js';
 import { createCropEditor } from './crop.js';
 import { createWardrobe, saveOutfit } from './wardrobe.js';
 import { createTagEditor } from './tags.js';
@@ -111,7 +111,10 @@ function status(text, error = false) {
 
 function syncButtons() {
     const busy = Boolean(activeRequest);
-    ui.generate.disabled = busy || loadingImage || !image || !ui.profile.value;
+    const portrait = isPortrait(ui.mode);
+    ui.generate.disabled = busy || loadingImage || (!image && !portrait) || !ui.profile.value;
+    for (const option of ui.modeOptions) option.disabled = busy;
+    ui.scope.hidden = ui.collection.hidden = portrait;
     ui.cancel.hidden = !busy;
     ui.profile.disabled = busy;
     ui.refresh.disabled = busy;
@@ -136,7 +139,8 @@ function syncButtons() {
     ui.cropEditor.actions.hidden = ui.view !== 'crop';
     ui.generateActions.hidden = !busy && ui.view !== 'outfit';
     ui.generate.hidden = busy;
-    ui.generate.textContent = loadingImage ? 'Подготовка фото…' : 'Описать одежду';
+    ui.generate.textContent = loadingImage ? 'Подготовка фото…' : ({ caption: 'Описать одежду', tags: 'Получить теги одежды', persona: 'Получить теги персоны', bot: 'Получить теги бота' })[ui.mode];
+    ui.result.placeholder = ui.mode === 'caption' ? 'clothes: …' : 'Теги появятся здесь…';
     dialog.setAttribute('aria-busy', String(busy || loadingImage));
 }
 
@@ -231,7 +235,7 @@ function clearImage() {
     ui.filename.textContent = '';
     ui.result.value = '';
     ui.file.value = '';
-    status('Прикрепи картинку с одеждой.');
+    status(isPortrait(ui.mode) ? 'Фото убрано. Можно использовать описание карточки.' : 'Прикрепи картинку с одеждой.');
     syncButtons();
 }
 
@@ -258,18 +262,19 @@ function openPinterest() {
 }
 
 async function generate() {
-    if (activeRequest || loadingImage || !image || ui.view === 'crop') return;
+    if (activeRequest || loadingImage || (!image && !isPortrait(ui.mode)) || ui.view === 'crop') return;
     const controller = new AbortController();
     activeRequest = controller;
     const timeout = setTimeout(() => controller.abort(new DOMException('Время ожидания истекло (120 секунд). Попробуй ещё раз.', 'TimeoutError')), 120000);
     settings().profileId = ui.profile.value;
     saveSettings();
-    status('Модель рассматривает изображение…');
+    status(image ? 'Модель рассматривает изображение…' : 'Модель читает описание…');
     syncButtons();
     try {
         const result = await describe(context(), {
             profileId: ui.profile.value,
             image,
+            mode: ui.mode,
             comment: ui.comment.value,
             includeAccessories: settings().includeAccessories === true,
             maxTokens: Number(ui.tokens.value),
@@ -277,7 +282,7 @@ async function generate() {
         });
         clearTimeout(timeout);
         let saved = false;
-        if (ui.saveToWardrobe.checked) {
+        if (!isPortrait(ui.mode) && ui.saveToWardrobe.checked) {
             try {
                 await saveOutfit(image, result, originalFile?.name || 'Изображение из буфера', ui.tags.getTags(), imageChat);
                 saved = true;
@@ -442,7 +447,7 @@ function createDialog() {
     ui.placeholder = node('span', 'pc-upload-placeholder');
     ui.placeholder.append(icon('image'), node('strong', '', 'Добавить фото'), node('span', 'pc-hint', 'Из галереи или файлов'));
     ui.preview = node('img', 'pc-preview');
-    ui.preview.alt = 'Прикреплённое изображение одежды';
+    ui.preview.alt = 'Прикреплённый референс';
     ui.preview.hidden = true;
     drop.append(ui.placeholder, ui.preview);
     drop.addEventListener('dragover', event => { event.preventDefault(); drop.classList.add('pc-drag'); });
@@ -475,7 +480,25 @@ function createDialog() {
     ui.refresh = iconButton('Обновить профили', 'refresh', refreshProfiles);
     const profileRow = node('div', 'pc-profile-row');
     profileRow.append(field('Профиль подключения', ui.profile), ui.refresh);
-    const scope = node('div', 'pc-scope');
+    ui.mode = 'caption';
+    const modes = node('div', 'pc-scope');
+    modes.setAttribute('role', 'group');
+    modes.setAttribute('aria-label', 'Режим описания');
+    ui.modeOptions = [['caption', 'Описание одежды', 'shirt'], ['tags', 'Danbooru · одежда', 'spark'], ['persona', 'Теги персоны', 'spark'], ['bot', 'Теги бота', 'spark']].map(([mode, label, symbol]) => {
+        const option = button('', () => {
+            if (ui.mode === mode) return;
+            ui.mode = mode;
+            ui.result.value = '';
+            updateScope();
+            status('');
+            syncButtons();
+        });
+        option.dataset.mode = mode;
+        option.append(icon(symbol), node('span', '', label));
+        modes.append(option);
+        return option;
+    });
+    const scope = ui.scope = node('div', 'pc-scope');
     scope.setAttribute('role', 'group');
     scope.setAttribute('aria-label', 'Что описывать');
     ui.scopeOptions = [];
@@ -487,7 +510,11 @@ function createDialog() {
         ui.rule.textContent = enabled
             ? 'Одежда, обувь, сумки и украшения. Только то, что видно на фото.'
             : 'Без обуви и аксессуаров. Исключения можно добавить в пожелании.';
-        ui.prompt.textContent = enabled ? ACCESSORIES_PROMPT : SYSTEM_PROMPT;
+        ui.modeOptions.forEach(option => option.setAttribute('aria-pressed', String(option.dataset.mode === ui.mode)));
+        if (isPortrait(ui.mode)) ui.rule.textContent = ui.mode === 'persona'
+            ? 'Модели отправится описание активной персоны ({{persona}}). Фото можно добавить для деталей внешности.'
+            : 'В личном чате модели отправятся описание и personality бота ({{description}}, {{personality}}). В группе используется только прикреплённое фото.';
+        ui.prompt.textContent = promptFor(ui.mode, enabled);
     };
     for (const [enabled, label, symbol] of [[false, 'Только одежда', 'shirt'], [true, 'С аксессуарами', 'glasses']]) {
         const option = button('', () => {
@@ -514,7 +541,7 @@ function createDialog() {
     ui.clearComment.setAttribute('aria-label', 'Стереть пожелание');
     const comment = node('details', 'pc-comment');
     comment.append(node('summary', '', 'Добавить пожелание'), field('Дополнительный комментарий', ui.comment), ui.clearComment);
-    const collection = node('div', 'pc-collection-options');
+    const collection = ui.collection = node('div', 'pc-collection-options');
     const saveLabel = node('label', 'pc-toggle');
     ui.saveToWardrobe = node('input');
     ui.saveToWardrobe.type = 'checkbox';
@@ -525,7 +552,7 @@ function createDialog() {
     ui.tagDetails = node('details', 'pc-tag-details');
     ui.tagDetails.append(node('summary', '', 'Теги образа'), ui.tags.element);
     collection.append(saveLabel, ui.tagDetails);
-    outfit.append(pinterest, upload, profileRow, scope, ui.rule, comment, collection);
+    outfit.append(modes, pinterest, upload, profileRow, scope, ui.rule, comment, collection);
 
     const preferences = ui.panels.settings;
     preferences.append(node('h3', '', 'Настройки'), sendbarToggle());
@@ -557,7 +584,7 @@ function createDialog() {
 
     const output = ui.panels.result;
     ui.resultEmpty = node('div', 'pc-empty');
-    ui.resultEmpty.append(node('h3', '', 'Здесь будет описание'), node('p', 'pc-hint', 'Добавь фото во вкладке «Образ» и нажми «Описать одежду».'));
+    ui.resultEmpty.append(node('h3', '', 'Здесь будет результат'), node('p', 'pc-hint', 'Выбери режим во вкладке «Образ» и нажми кнопку внизу.'));
     ui.result = node('textarea', 'pc-input pc-result');
     ui.result.rows = 7;
     ui.result.placeholder = 'clothes: …';

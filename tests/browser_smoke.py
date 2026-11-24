@@ -22,6 +22,7 @@ FIXTURE = b'''<!doctype html><html><head><meta charset="utf-8">
 <script>
 window.calls = [];
 window.mode = 'success';
+window.portraitResult = '1girl, adult woman, 1.3::slender, delicate build::, 1.4::black hair::, very long hair, -1.2::short hair::';
 window.saved = 0;
 window.wardrobeOpens = 0;
 const openDatabase = indexedDB.open.bind(indexedDB);
@@ -52,6 +53,8 @@ window.ctx = {
     } },
     saveSettingsDebounced() { window.saved++; localStorage.setItem('pinClothes', JSON.stringify(ctx.extensionSettings.pinClothes)); },
     eventTypes: { APP_READY: 'ready', CHAT_CHANGED: 'chat_changed' },
+    persona: 'Japanese woman, long black hair, freckles',
+    substituteParams(value) { return value === '{{persona}}' ? this.persona : value; },
     eventSource: { on(event, callback) { if (event === 'ready') window.appReady = callback; else window.chatChanged = callback; } },
     ConnectionManagerRequestService: {
         getSupportedProfiles() { return ctx.extensionSettings.connectionManager.profiles; },
@@ -63,6 +66,8 @@ window.ctx = {
             }
             if (mode === 'error') throw new Error('API request failed', { cause: new Error('Vision unavailable') });
             if (mode === 'empty') return { content: '', reasoning: 'Hidden reasoning' };
+            if (mode === 'portrait') return { content: portraitResult };
+            if (mode === 'tags') return { content: 'white_shirt, collared_shirt, pleated_skirt' };
             return { content: 'clothes: brown halter top, light-wash jeans', reasoning: 'Hidden reasoning' };
         }
     }
@@ -231,6 +236,7 @@ try:
         assert page.locator('.pc-preview').get_attribute('src') == cropped
         page.get_by_role('button', name='Обрезать фото', exact=True).click()
         selection = page.locator('.pc-crop-selection')
+        page.wait_for_function('Array.from(document.querySelectorAll("button")).some(b => b.textContent === "Применить" && !b.disabled)')
         previous_left = selection.evaluate('(e) => parseFloat(e.style.left)')
         selection.press('ArrowLeft')
         assert selection.evaluate('(e) => parseFloat(e.style.left)') < previous_left
@@ -543,6 +549,29 @@ try:
         page.get_by_label('Свои теги через запятую').fill('осеннее, Осеннее')
         page.get_by_label('Свои теги через запятую').press('Enter')
         assert page.get_by_role('button', name='Осеннее', exact=True).count() == 1
+        page.evaluate("mode = 'portrait'")
+        page.get_by_role('button', name='Теги персоны', exact=True).click()
+        page.get_by_role('button', name='Получить теги персоны', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-result").value === portraitResult')
+        parts = page.evaluate('calls.at(-1).messages[1].content')
+        assert len(parts) == 1 and 'Japanese woman, long black hair, freckles' in parts[0]['text']
+        page.get_by_role('tab', name='Образ', exact=True).click()
+        page.get_by_role('button', name='Теги бота', exact=True).click()
+        page.evaluate("ctx.characterId = 0; ctx.characters = [{description:'Wing tattoo', personality:'Quiet knight'}]")
+        page.locator('input[type=file]').set_input_files({'name': 'bot.png', 'mimeType': 'image/png', 'buffer': png})
+        page.get_by_role('button', name='Отмена', exact=True).click()
+        page.get_by_role('button', name='Получить теги бота', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-result").value === portraitResult')
+        parts = page.evaluate('calls.at(-1).messages[1].content')
+        assert 'Wing tattoo' in parts[0]['text'] and 'Quiet knight' in parts[0]['text'] and 'freckles' not in parts[0]['text']
+        assert parts[1]['type'] == 'image_url'
+        page.get_by_role('tab', name='Образ', exact=True).click()
+        page.get_by_role('button', name='Danbooru · одежда', exact=True).click()
+        page.evaluate("mode = 'tags'")
+        page.get_by_role('button', name='Получить теги одежды', exact=True).click()
+        page.wait_for_function('document.querySelector(".pc-result").value.startsWith("white_shirt,")')
+        request = page.evaluate('calls.at(-1)')
+        assert 'Danbooru tags' in request['messages'][0]['content'] and 'Wing tattoo' not in str(request)
         assert not errors, errors
         browser.close()
         print('PASS: touch crop, crop pixels in request and wardrobe, accessory prompts, profiles, draft insertion, errors, cancellation, responsive layout, persisted settings, WebP collection, pagination, deletion, memory cleanup, storage failures')
